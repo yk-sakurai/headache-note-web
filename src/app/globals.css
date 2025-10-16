@@ -16,7 +16,14 @@
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+    --brand-primary: #F5FFFA;
+    --brand-on-primary: #ffffff;
   }
+}
+
+:root {
+  --brand-primary: #15803D;
+  --brand-on-primary: #ffffff;
 }
 
 body {
