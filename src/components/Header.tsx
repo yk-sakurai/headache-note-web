@@ -46,6 +46,9 @@ export default function Header() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <h1 className="text-xl font-semibold text-gray-900">頭痛ノート</h1>
+            <nav className="ml-6 mr-auto">
+              <a href="/pricing" className="text-sm text-gray-700 hover:text-gray-900">料金</a>
+            </nav>
             
             {user ? (
               <Button
