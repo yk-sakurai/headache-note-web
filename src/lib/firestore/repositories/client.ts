@@ -14,7 +14,6 @@ import {
   setDoc,
   updateDoc,
   deleteDoc,
-  where,
 } from "firebase/firestore";
 import {
   User,
@@ -216,7 +215,7 @@ export class ClientDeviceRepository {
     try {
       const docRef = doc(db, "users", uid, "devices", deviceId);
 
-      const updateData: Record<string, any> = {};
+      const updateData: Record<string, boolean> = {};
       if (pushSettings.pushEnabled !== undefined) {
         updateData["push.pushEnabled"] = pushSettings.pushEnabled;
       }

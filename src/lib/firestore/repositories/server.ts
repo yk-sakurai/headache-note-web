@@ -455,7 +455,7 @@ export class DeviceRepository {
         .collection("devices")
         .doc(deviceId);
       
-      const updateData: Record<string, any> = {};
+      const updateData: Record<string, boolean> = {};
       if (pushSettings.pushEnabled !== undefined) {
         updateData["push.pushEnabled"] = pushSettings.pushEnabled;
       }

@@ -72,6 +72,8 @@ interface Subscription {
   status: SubscriptionStatus;
   plan: SubscriptionPlan;
   priceId: string;
+  platform: SubscriptionPlatform;
+  stripePriceId?: string;
   currentPeriodEnd: Timestamp;
   currentPeriodStart: Timestamp;
   trialEnd?: Timestamp;
@@ -89,6 +91,7 @@ type SubscriptionStatus =
   | "incomplete"; // 不完全（初回決済が完了していない）
 
 type SubscriptionPlan = "monthly" | "yearly";
+type SubscriptionPlatform = "web" | "ios" | "android";
 ```
 
 ### フィールド説明
@@ -97,7 +100,9 @@ type SubscriptionPlan = "monthly" | "yearly";
 |-----------|-----|------|------|
 | `status` | `SubscriptionStatus` | ✅ | サブスクリプションの現在の状態。有料機能のアクセス制御に使用。`active` または `trialing` の場合、有料機能にアクセス可能。 |
 | `plan` | `SubscriptionPlan` | ✅ | ユーザーが選択しているプラン。`monthly`（月額）または `yearly`（年額）。 |
-| `priceId` | `string` | ✅ | StripeダッシュボードのPrice ID（`price_xxx`形式）。プラン変更時に更新される。 |
+| `priceId` | `string` | ✅ | プラットフォームとバージョンを含むプランID（例: `web_monthly_v1`, `web_yearly_v1_launch_promo`）。価格改定前後の比較、プラットフォーム別分析に使用。 |
+| `platform` | `SubscriptionPlatform` | ✅ | サブスクリプションのプラットフォーム。`web`（Stripe）、`ios`（Apple In-App Purchase）、`android`（Google Play Billing）。プラットフォーム別の統計分析に使用。 |
+| `stripePriceId` | `string?` | - | StripeダッシュボードのPrice ID（`price_xxx`形式）。`platform === 'web'` の場合のみ存在。プラン変更時に更新される。 |
 | `currentPeriodEnd` | `Timestamp` | ✅ | **重要**: 次回課金日。この日付を超えると自動更新（または終了）。有料機能のアクセス制御に使用（`currentPeriodEnd > 現在時刻` なら有効）。 |
 | `currentPeriodStart` | `Timestamp` | ✅ | 現在の課金期間の開始日。日割り計算や統計に使用。 |
 | `trialEnd` | `Timestamp?` | - | トライアル期間の終了日。トライアル中は `status === 'trialing'`。この日付を過ぎると `active` に移行（または `canceled`）。 |
@@ -243,6 +248,7 @@ interface CheckoutSession {
   uid?: string;
   mode: CheckoutMode;
   priceId: string;
+  platform: "web" | "ios" | "android";
   customerId?: string;
   status: CheckoutStatus;
   createdAt: Timestamp;
@@ -266,8 +272,9 @@ type CheckoutStatus = "created" | "completed" | "expired";
 |-----------|-----|------|------|
 | `uid` | `string?` | - | ユーザーID。ログイン済みの場合は入る。未ログインの場合は `undefined`（ゲスト決済）。 |
 | `mode` | `CheckoutMode` | ✅ | Stripe Checkoutのモード。`"subscription"`: サブスクリプション決済、`"payment"`: 単発決済。 |
-| `priceId` | `string` | ✅ | 選択されたStripe Price ID。どのプランが選ばれたかを記録。統計: 「月額 vs 年額」の選択率分析。 |
-| `customerId` | `string?` | - | Stripe顧客ID（`cus_xxx`形式）。決済完了後にWebhookで更新。 |
+| `priceId` | `string` | ✅ | 選択されたプランID（例: `web_monthly_v1`, `web_yearly_v1`, `web_yearly_v1_launch_promo`）。プラットフォームとバージョンを含む。統計: 「月額 vs 年額」の選択率分析、価格改定前後の比較、プラットフォーム別分析。 |
+| `platform` | `string` | ✅ | 決済プラットフォーム。`web`（Stripe）、`ios`（Apple）、`android`（Google）。プラットフォーム別CVR分析に使用。 |
+| `customerId` | `string?` | - | Stripe顧客ID（`cus_xxx`形式）。決済完了後にWebhookで更新。`platform === 'web'` の場合のみ存在。 |
 | `status` | `CheckoutStatus` | ✅ | **重要**: セッションの状態。`"created"`: セッション作成（**CVR分母**）、`"completed"`: 決済完了（**CVR分子**）、`"expired"`: 有効期限切れ（離脱）。 |
 | `createdAt` | `Timestamp` | ✅ | **重要**: セッション作成日時。CVR計測の分母カウント。 |
 | `completedAt` | `Timestamp?` | - | **重要**: 決済完了日時。CVR計測の分子カウント。ファネル分析: `createdAt` → `completedAt` の時間差を計測可能。 |
@@ -380,7 +387,7 @@ type AuditLogType =
 | `type` | `AuditLogType` | ✅ | イベントの種類。CVRファネル分析に使用。 |
 | `uid` | `string?` | - | ユーザーID。ログイン済みの場合は入る。未ログインの場合は `undefined`。 |
 | `route` | `string?` | - | イベントが発生したページパス。例: `"/pricing"`, `"/checkout"`。ユーザー導線の分析に使用。 |
-| `metadata` | `object?` | - | 追加のコンテキスト情報。柔軟に情報を追加可能。例: `{ "plan": "yearly", "priceId": "price_xxx" }` |
+| `metadata` | `object?` | - | 追加のコンテキスト情報。柔軟に情報を追加可能。例: `{ "plan": "web_yearly_v1", "priceId": "price_xxx" }` |
 | `ts` | `Timestamp` | ✅ | イベント発生日時。時系列分析に使用。 |
 
 ### イベントタイプ詳細
