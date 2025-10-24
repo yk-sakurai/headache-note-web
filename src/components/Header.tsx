@@ -28,6 +28,7 @@ export default function Header() {
     try {
       setLoading(true);
       await signOut();
+      await fetch("/api/auth/session-logout", { method: "POST" });
       router.push("/");
     } catch (error) {
       console.error("ログアウトエラー:", error);
