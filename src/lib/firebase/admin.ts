@@ -81,5 +81,6 @@ export function getAdminAuth(): Auth {
   return _adminAuth;
 }
 
+export const adminApp = getAdminApp();
 export const adminDb = getAdminDb();
 export const adminAuth = getAdminAuth();

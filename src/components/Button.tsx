@@ -15,7 +15,7 @@ interface ButtonAsButton extends BaseButtonProps, Omit<ButtonHTMLAttributes<HTML
 
 interface ButtonAsLink extends BaseButtonProps {
   href: string;
-  onClick?: never;
+  onClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void;
   type?: never;
 }
 
@@ -41,8 +41,14 @@ export default function Button({
   const className = `${baseStyles} ${variantStyles[variant]}`;
 
   if (href) {
+    const linkProps = props as ButtonAsLink;
     return (
-      <Link href={href} className={className}>
+      <Link 
+        href={href} 
+        className={`${className} ${disabled ? 'pointer-events-none opacity-50' : ''}`}
+        onClick={linkProps.onClick}
+        aria-disabled={disabled}
+      >
         {children}
       </Link>
     );

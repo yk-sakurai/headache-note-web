@@ -10,6 +10,8 @@ type PriceCardProps = {
   ctaText: string;
   badgeText?: string;
   highlighted?: boolean;
+  onCtaClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void;
+  disabled?: boolean;
 };
 
 export default function PriceCard({
@@ -22,6 +24,8 @@ export default function PriceCard({
   ctaText,
   badgeText,
   highlighted = false,
+  onCtaClick,
+  disabled = false,
 }: PriceCardProps) {
   return (
     <div
@@ -61,7 +65,9 @@ export default function PriceCard({
       </ul>
 
       <div className="pt-2">
-        <Button href={ctaHref}>{ctaText}</Button>
+        <Button href={ctaHref} onClick={onCtaClick} disabled={disabled}>
+          {ctaText}
+        </Button>
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 "use client";
 import { useState, FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { signInWithEmailPassword } from "@/lib/firebase/auth.client";
 
@@ -25,6 +25,9 @@ function mapAuthErrorToMessage(code: string): string {
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const rawRedirect = searchParams.get("redirect");
+  const redirectTo = rawRedirect && rawRedirect.startsWith("/") ? rawRedirect : "/home";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -52,9 +55,9 @@ export default function LoginPage() {
         throw new Error("Failed to create session");
       }
 
-      router.replace("/home");
+      router.replace(redirectTo);
     } catch (err: unknown) {
-      const code = typeof (err as any)?.code === "string" ? (err as any).code : "";
+      const code = typeof (err as { code?: string })?.code === "string" ? ((err as { code?: string }).code ?? "") : "";
       setError(mapAuthErrorToMessage(code));
     } finally {
       setLoading(false);

@@ -77,7 +77,7 @@ export interface AuditLog {
   type: AuditLogType;
   uid?: string;
   route?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, string | number | boolean>;
   ts: Timestamp | AdminTimestamp;
 }
 
