@@ -175,7 +175,7 @@ export class InvoiceRepository {
     limit: number = 10
   ): Promise<Invoice[]> {
     try {
-      const collectionRef = db.collection("invoices").doc(uid).collection("invoices");
+      const collectionRef = db.collection("invoices").doc(uid).collection("user_invoices");
       const snapshot = await collectionRef
         .orderBy("createdAt", "desc")
         .limit(limit)
@@ -196,7 +196,7 @@ export class InvoiceRepository {
       const docRef = db
         .collection("invoices")
         .doc(uid)
-        .collection("invoices")
+        .collection("user_invoices")
         .doc(invoiceId);
       const doc = await docRef.get();
 
@@ -220,7 +220,7 @@ export class InvoiceRepository {
       const docRef = db
         .collection("invoices")
         .doc(uid)
-        .collection("invoices")
+        .collection("user_invoices")
         .doc(invoiceId);
       await docRef.set(data);
     } catch (error) {
@@ -238,7 +238,7 @@ export class InvoiceRepository {
       const docRef = db
         .collection("invoices")
         .doc(uid)
-        .collection("invoices")
+        .collection("user_invoices")
         .doc(invoiceId);
       await docRef.update(data);
     } catch (error) {

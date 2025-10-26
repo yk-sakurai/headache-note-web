@@ -74,7 +74,7 @@ export class ClientInvoiceRepository {
     limit: number = 10
   ): Promise<Invoice[]> {
     try {
-      const invoicesRef = collection(db, "invoices", uid, "invoices");
+      const invoicesRef = collection(db, "invoices", uid, "user_invoices");
       const q = query(
         invoicesRef,
         orderBy("createdAt", "desc"),
@@ -94,7 +94,7 @@ export class ClientInvoiceRepository {
     invoiceId: string
   ): Promise<Invoice | null> {
     try {
-      const docRef = doc(db, "invoices", uid, "invoices", invoiceId);
+      const docRef = doc(db, "invoices", uid, "user_invoices", invoiceId);
       const docSnap = await getDoc(docRef);
 
       if (!docSnap.exists()) {

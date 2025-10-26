@@ -28,7 +28,7 @@ service cloud.firestore {
       allow write: if false;
     }
     
-    match /invoices/{uid}/{invoiceId} {
+    match /invoices/{uid}/user_invoices/{invoiceId} {
       allow read: if isOwner(uid);
       allow write: if false;
     }
