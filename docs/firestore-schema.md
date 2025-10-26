@@ -168,7 +168,7 @@ if (isCancelScheduled(subscription)) {
 
 ## 3. Invoice サブコレクション
 
-**パス**: `invoices/{uid}/{invoiceId}`
+**パス**: `invoices/{uid}/user_invoices/{invoiceId}`
 
 **役割**: Stripeで発行された請求書の履歴を保存します。ユーザーのダッシュボードで「請求履歴」として表示されます。
 
@@ -465,7 +465,7 @@ users/{uid} ─────────────┐
   ↓ (1:1)                │
 subscriptions/{uid}      │
   ↓ (1:N)                │
-invoices/{uid}/{id}      │
+invoices/{uid}/user_invoices/{id}      │
                          │
                          │
 checkout_sessions/{id} ──┤ Webhook経由で連携
@@ -496,7 +496,7 @@ audit_logs/{id} ─────────┘ 独立（分析用）
    ```
    Stripe → Webhook (invoice.payment_succeeded)
             ↓
-            invoices/{uid}/{id} 作成
+            invoices/{uid}/user_invoices/{id} 作成
             ↓
             subscriptions/{uid} 更新 (currentPeriodEnd など)
    ```
