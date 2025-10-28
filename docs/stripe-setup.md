@@ -106,6 +106,38 @@ NEXT_PUBLIC_LAUNCH_DATE=2025-10-23
 4. 環境変数を本番用に更新（`sk_live_...`, `pk_live_...` など）
 5. Webhook エンドポイントを本番URLで設定
 
+## 8. Customer Portal 設定
+
+Stripeダッシュボードで Customer Portal を有効化し、プラン変更やキャンセルをユーザーが自分で行えるようにします。
+
+### 設定画面
+- ダッシュボード → `Settings` → `Billing` → `Customer portal`
+
+### 設定項目
+- 許可する操作
+  - Switch plans（プラン変更）: 有効
+  - Cancel subscriptions（キャンセル）: 有効
+  - View invoices（請求履歴の表示）: 有効
+  - Update payment methods（支払い方法の更新）: 有効
+- プラン変更時の按分（Proration）
+  - 按分を有効化（デフォルトで有効）
+  - Charge prorated amount immediately を選択
+- キャンセル動作
+  - Cancel at end of billing period（期末キャンセル）を選択
+  - 即時キャンセルは無効
+
+### リダイレクト設定
+- Return URL はアプリ側で `/api/portal` が生成時に `${origin}/home` を設定
+
+### 動作確認
+1. `/home` → 「プランを管理」ボタン → ポータルに遷移
+2. プラン変更（例：月→年）を実行
+3. Webhook 経由で `subscriptions/{uid}` が更新されることを確認
+4. `/home` の表示が更新されることを確認
+
+### 参考
+- Proration（按分）の仕組み: https://stripe.com/docs/billing/subscriptions/prorations
+
 ## トラブルシューティング
 
 ### エラー: "Unauthorized"

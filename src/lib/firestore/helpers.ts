@@ -69,6 +69,32 @@ export function getNextBillingDate(
 }
 
 /**
+ * サブスクリプション登録日の取得
+ */
+export function getSubscriptionStartDate(
+  subscription: Subscription | null
+): Date | null {
+  if (!subscription) return null;
+
+  const timestamp = subscription.currentPeriodStart;
+
+  if (timestamp instanceof Timestamp) {
+    return timestamp.toDate();
+  }
+
+  if (
+    timestamp &&
+    typeof timestamp === "object" &&
+    "toDate" in timestamp &&
+    typeof timestamp.toDate === "function"
+  ) {
+    return (timestamp as AdminTimestamp).toDate();
+  }
+
+  return null;
+}
+
+/**
  * トライアル終了日の取得
  */
 export function getTrialEndDate(
