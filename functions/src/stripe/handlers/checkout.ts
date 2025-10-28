@@ -69,10 +69,10 @@ export async function handleCheckoutSessionCompleted(
 
     const currentPeriodStart = s.current_period_start
       ? new Date(s.current_period_start * 1000)
-      : new Date();
+      : undefined;
     const currentPeriodEnd = s.current_period_end
       ? new Date(s.current_period_end * 1000)
-      : new Date();
+      : undefined;
     const trialEnd = s.trial_end ? new Date(s.trial_end * 1000) : undefined;
     const canceledAt = s.canceled_at ? new Date(s.canceled_at * 1000) : undefined;
 
@@ -81,11 +81,11 @@ export async function handleCheckoutSessionCompleted(
       status: mapStripeStatus(subscription.status),
       plan: inferPlanFromPriceId(appPriceId),
       platform: "web",
-      currentPeriodStart,
-      currentPeriodEnd,
       cancelAtPeriodEnd: !!s.cancel_at_period_end,
       updatedAt: new Date(),
     };
+    if (currentPeriodStart) subData["currentPeriodStart"] = currentPeriodStart;
+    if (currentPeriodEnd) subData["currentPeriodEnd"] = currentPeriodEnd;
     if (appPriceId) subData["priceId"] = appPriceId;
     if (stripePriceId) subData["stripePriceId"] = stripePriceId;
     if (trialEnd) subData["trialEnd"] = trialEnd;
