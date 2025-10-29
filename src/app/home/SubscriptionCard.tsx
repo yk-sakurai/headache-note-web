@@ -105,6 +105,34 @@ export default function SubscriptionCard({
         </div>
       ) : null}
 
+      {status === "trialing" && typeof remainingTrialDays === "number" && remainingTrialDays <= 3 ? (
+        <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-md text-sm">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+            <span>
+              トライアルの残り日数が少なくなっています。継続利用するには支払い方法の設定が必要です。
+            </span>
+            <div className="flex items-center gap-2">
+              {hasCustomer ? (
+                <button
+                  onClick={handleOpenPortal}
+                  disabled={loading}
+                  className="inline-flex items-center justify-center rounded-md bg-gray-900 px-3 py-1.5 text-white text-xs disabled:opacity-50"
+                >
+                  {loading ? "読み込み中..." : "支払い方法を設定"}
+                </button>
+              ) : (
+                <a
+                  href="/pricing"
+                  className="inline-flex items-center justify-center rounded-md bg-blue-600 px-3 py-1.5 text-white text-xs"
+                >
+                  料金ページへ
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {status === "canceled" ? (
         <div className="bg-gray-50 border border-gray-200 p-3 rounded-md text-sm">
           サブスクリプションはキャンセル済みです。期末まではアクセス可能です。
@@ -119,7 +147,18 @@ export default function SubscriptionCard({
               : "bg-yellow-50 border border-yellow-200 p-3 rounded-md text-sm"
           }
         >
-          {warning}
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+            <span>{warning}</span>
+            {(status === "past_due" || status === "unpaid") ? (
+              <button
+                onClick={handleOpenPortal}
+                disabled={loading}
+                className="inline-flex items-center justify-center rounded-md bg-gray-900 px-3 py-1.5 text-white text-xs disabled:opacity-50"
+              >
+                {loading ? "読み込み中..." : "支払い方法を更新"}
+              </button>
+            ) : null}
+          </div>
         </div>
       ) : null}
 

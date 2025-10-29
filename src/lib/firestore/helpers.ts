@@ -60,7 +60,7 @@ export function getNextBillingDate(
     timestamp &&
     typeof timestamp === "object" &&
     "toDate" in timestamp &&
-    typeof timestamp.toDate === "function"
+    typeof (timestamp as any).toDate === "function"
   ) {
     return (timestamp as AdminTimestamp).toDate();
   }
@@ -86,7 +86,7 @@ export function getSubscriptionStartDate(
     timestamp &&
     typeof timestamp === "object" &&
     "toDate" in timestamp &&
-    typeof timestamp.toDate === "function"
+    typeof (timestamp as any).toDate === "function"
   ) {
     return (timestamp as AdminTimestamp).toDate();
   }
@@ -112,7 +112,7 @@ export function getTrialEndDate(
     timestamp &&
     typeof timestamp === "object" &&
     "toDate" in timestamp &&
-    typeof timestamp.toDate === "function"
+    typeof (timestamp as any).toDate === "function"
   ) {
     return (timestamp as AdminTimestamp).toDate();
   }
@@ -225,4 +225,108 @@ export function getSubscriptionWarningMessage(
   }
 
   return null;
+}
+
+export type AccessDeniedReasonCode =
+  | "no_subscription"
+  | "payment_unpaid"
+  | "payment_incomplete"
+  | "expired"
+  | "unknown";
+
+export interface AccessDeniedReason {
+  code: AccessDeniedReasonCode;
+  message: string;
+  suggestPortal: boolean;
+  suggestPricing: boolean;
+}
+
+/**
+ * 実際にアクセス可能かどうかを判定
+ * - active, trialing: 許可
+ * - canceled: currentPeriodEnd が未来なら期末まで許可
+ * - past_due: 猶予として一時的に許可（UIで警告表示）
+ * - unpaid, incomplete: 不可
+ */
+export function hasActiveAccess(subscription: Subscription | null): boolean {
+  if (!subscription) return false;
+
+  const now = new Date();
+  const periodEnd = getNextBillingDate(subscription);
+
+  switch (subscription.status) {
+    case "active":
+    case "trialing":
+      return true;
+    case "canceled":
+      return Boolean(periodEnd && periodEnd > now);
+    case "past_due":
+      return true;
+    case "unpaid":
+    case "incomplete":
+      return false;
+    default:
+      return false;
+  }
+}
+
+/**
+ * アクセス不可の理由を返す（UIで案内出し分けに使用）
+ */
+export function getAccessDeniedReason(
+  subscription: Subscription | null
+): AccessDeniedReason {
+  const base = {
+    suggestPortal: false,
+    suggestPricing: false,
+  };
+
+  if (!subscription) {
+    return {
+      code: "no_subscription",
+      message: "サブスクリプションが未設定です。プランを選択してください。",
+      ...base,
+      suggestPricing: true,
+    };
+  }
+
+  const now = new Date();
+  const periodEnd = getNextBillingDate(subscription);
+
+  if (subscription.status === "unpaid") {
+    return {
+      code: "payment_unpaid",
+      message: "未払いのためアクセスできません。お支払い方法を更新してください。",
+      ...base,
+      suggestPortal: true,
+    };
+  }
+
+  if (subscription.status === "incomplete") {
+    return {
+      code: "payment_incomplete",
+      message: "初回決済が完了していません。お支払い設定を完了してください。",
+      ...base,
+      suggestPortal: true,
+    };
+  }
+
+  if (subscription.status === "canceled") {
+    const expired = !periodEnd || periodEnd <= now;
+    if (expired) {
+      return {
+        code: "expired",
+        message: "サブスクリプションの有効期限が切れています。再開するにはプランを選択してください。",
+        ...base,
+        suggestPricing: true,
+      };
+    }
+  }
+
+  // ここに到達するのは通常想定外（レース等）
+  return {
+    code: "unknown",
+    message: "アクセス権を確認できませんでした。時間をおいて再度お試しください。",
+    ...base,
+  };
 }
