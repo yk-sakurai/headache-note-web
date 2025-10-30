@@ -10,7 +10,7 @@ import {
   LAUNCH_PROMO_DAYS,
 } from '@/lib/constants';
 import { getAuth } from 'firebase-admin/auth';
-import { adminApp } from '@/lib/firebase/admin';
+import { adminApp, adminDb } from '@/lib/firebase/admin';
 
 // プロモーション期間判定（サーバー側）
 function isPromoActive(): boolean {
@@ -51,6 +51,19 @@ export async function POST(req: NextRequest) {
       };
     };
 
+    // CookieからUTMをフォールバック（7日間保持）
+    const utmFromCookies = (() => {
+      const store = cookieStore;
+      const get = (k: string) => store.get(k)?.value || undefined;
+      return {
+        source: utm?.source ?? get('utm_source'),
+        medium: utm?.medium ?? get('utm_medium'),
+        campaign: utm?.campaign ?? get('utm_campaign'),
+        term: utm?.term ?? get('utm_term'),
+        content: utm?.content ?? get('utm_content'),
+      };
+    })();
+
     // 3. priceIdをStripe Price IDに変換（サーバー側でプロモ判定）
     let stripePriceId: string;
     let trialPeriodDays: number | undefined;
@@ -85,15 +98,47 @@ export async function POST(req: NextRequest) {
       metadata: {
         uid,
         priceId: actualPriceId,
-        ...(utm && {
-          utm_source: utm.source || '',
-          utm_medium: utm.medium || '',
-          utm_campaign: utm.campaign || '',
-          utm_term: utm.term || '',
-          utm_content: utm.content || '',
+        ...(utmFromCookies && {
+          utm_source: utmFromCookies.source || '',
+          utm_medium: utmFromCookies.medium || '',
+          utm_campaign: utmFromCookies.campaign || '',
+          utm_term: utmFromCookies.term || '',
+          utm_content: utmFromCookies.content || '',
         }),
       },
     });
+
+    // Firestore に作成イベントを記録（webhook checkout.session.created の代替）
+    try {
+      const createdAt =
+        (session as any).created ? new Date((session as any).created * 1000) : new Date();
+      const utmToSave =
+        utmFromCookies && Object.values(utmFromCookies).some(Boolean)
+          ? {
+              ...(utmFromCookies.source ? { source: utmFromCookies.source } : {}),
+              ...(utmFromCookies.medium ? { medium: utmFromCookies.medium } : {}),
+              ...(utmFromCookies.campaign ? { campaign: utmFromCookies.campaign } : {}),
+              ...(utmFromCookies.term ? { term: utmFromCookies.term } : {}),
+              ...(utmFromCookies.content ? { content: utmFromCookies.content } : {}),
+            }
+          : undefined;
+
+      const checkoutData: Record<string, unknown> = {
+        status: 'created',
+        mode: 'subscription',
+        platform: 'web',
+        uid,
+        priceId: actualPriceId,
+        createdAt,
+      };
+      if (utmToSave) checkoutData['utm'] = utmToSave;
+
+      await adminDb.collection('checkout_sessions').doc(session.id).set(checkoutData, {
+        merge: true,
+      });
+    } catch (e) {
+      // 失敗してもチェックアウト自体は継続
+    }
 
     return NextResponse.json({ url: session.url });
   } catch (err) {

@@ -31,6 +31,28 @@ export default function PricingClient({
     return () => unsubscribe();
   }, []);
 
+  // UTMをCookieに保持（7日間）
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const utmMap: Record<string, string | null> = {
+      utm_source: params.get("utm_source"),
+      utm_medium: params.get("utm_medium"),
+      utm_campaign: params.get("utm_campaign"),
+      utm_term: params.get("utm_term"),
+      utm_content: params.get("utm_content"),
+    };
+    const hasAny = Object.values(utmMap).some((v) => !!v);
+    if (!hasAny) return;
+
+    const expires = new Date();
+    expires.setDate(expires.getDate() + 7);
+    Object.entries(utmMap).forEach(([key, value]) => {
+      if (value) {
+        document.cookie = `${key}=${encodeURIComponent(value)}; path=/; SameSite=Lax; expires=${expires.toUTCString()}`;
+      }
+    });
+  }, []);
+
   const handleCheckout = async (priceId: 'web_monthly_v1' | 'web_yearly_v1') => {
     // 未ログインならログインページへリダイレクト
     const user = getCurrentUser();

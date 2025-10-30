@@ -73,7 +73,8 @@ export const stripeWebhook = onRequest({
   }, { merge: true });
 
   try {
-    switch (event.type) {
+    const eventType = event.type as unknown as string;
+    switch (eventType) {
       case "checkout.session.completed":
         await handleCheckoutSessionCompleted(event, db);
         break;

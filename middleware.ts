@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE_NAME } from "@/lib/constants";
 
 function isProtectedPath(pathname: string): boolean {
+  console.log("[middleware] isProtectedPath:", pathname);
   if (pathname === "/home" || pathname.startsWith("/home/")) return true;
   return false;
 }
@@ -15,6 +16,27 @@ function buildLoginRedirectURL(req: NextRequest): URL {
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  // Pricingページ: 一回だけのpricing_view記録用CookieセットとログAPI呼び出し
+  if (pathname === "/pricing") {
+    const pvCookieName = "pv_pricing";
+    const hasPv = req.cookies.get(pvCookieName)?.value;
+    const res = NextResponse.next();
+    if (!hasPv) {
+      // 24時間の記録済みCookieを付与
+      res.cookies.set(pvCookieName, "1", {
+        path: "/",
+        maxAge: 60 * 60 * 24,
+        sameSite: "lax",
+      });
+      // 監査ログをAPI経由で記録（失敗してもレスポンスは継続）
+      try {
+        const logUrl = new URL("/api/audit/pricing-view", req.url);
+        await fetch(logUrl, { method: "POST" });
+      } catch {}
+    }
+    return res;
+  }
 
   if (!isProtectedPath(pathname)) {
     return NextResponse.next();
@@ -43,5 +65,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/home/:path*"],
+  matcher: ["/home/:path*", "/pricing"],
 };
