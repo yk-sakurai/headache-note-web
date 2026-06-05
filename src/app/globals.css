@@ -19,6 +19,10 @@
     --brand-primary: #F5FFFA;
     --brand-on-primary: #ffffff;
   }
+
+  input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+  }
 }
 
 :root {

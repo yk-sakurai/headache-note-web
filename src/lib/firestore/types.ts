@@ -104,3 +104,34 @@ export interface Device {
   userId: string;
   push: DevicePushSettings;
 }
+
+// Headache Log related types
+export interface HeadacheMedication {
+  name: string;
+  takenAt: Timestamp | AdminTimestamp;
+  dosage: number;
+  unit: string;
+  effectiveness?: number;
+}
+
+export interface HeadacheAction {
+  text: string;
+  takenAt: Timestamp | AdminTimestamp;
+  effectiveness?: number;
+}
+
+export interface HeadacheLog {
+  id: string;
+  userId: string;
+  timing: Timestamp | AdminTimestamp;
+  intensity?: number;
+  duration?: number;
+  locations?: string[];
+  types?: string[];
+  triggers?: string[];
+  medications?: HeadacheMedication[];
+  actions?: HeadacheAction[];
+  associatedSymptoms?: string[];
+  note?: string;
+  isHeadacheFree?: boolean;
+}
