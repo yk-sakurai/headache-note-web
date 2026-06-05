@@ -7,6 +7,7 @@ import {
   collection,
   query,
   orderBy,
+  where,
   limit as firestoreLimit,
   getDocs,
   addDoc,
@@ -15,13 +16,22 @@ import {
   updateDoc,
   deleteDoc,
 } from "firebase/firestore";
+import type { FieldValue } from "firebase/firestore";
 import {
   User,
   Subscription,
   Invoice,
   CheckoutSession,
   Device,
+  HeadacheLog,
 } from "../types";
+import { omitUndefinedDeep, sanitizeHeadacheLogStrings } from "./sanitize";
+
+export type HeadacheLogUpdateData = {
+  [K in keyof Omit<HeadacheLog, "id">]?:
+    | Omit<HeadacheLog, "id">[K]
+    | FieldValue;
+};
 
 /**
  * User Repository (Client-side)
@@ -244,6 +254,82 @@ export class ClientDeviceRepository {
     } catch (error) {
       console.error("Error deleting device:", error);
       throw new Error("デバイスの削除に失敗しました");
+    }
+  }
+}
+
+/**
+ * HeadacheLog Repository (Client-side)
+ */
+export class ClientHeadacheLogRepository {
+  static async listLogs(uid: string, limit: number = 50): Promise<HeadacheLog[]> {
+    try {
+      const logsRef = collection(db, "headache_logs");
+      const q = query(
+        logsRef,
+        where("userId", "==", uid),
+        orderBy("timing", "desc"),
+        firestoreLimit(limit)
+      );
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.docs.map((d) =>
+        sanitizeHeadacheLogStrings({ id: d.id, ...(d.data() as Omit<HeadacheLog, "id">) })
+      );
+    } catch (error) {
+      console.error("Error listing headache logs:", error);
+      throw new Error("頭痛記録の取得に失敗しました");
+    }
+  }
+
+  static async getLog(logId: string): Promise<HeadacheLog | null> {
+    try {
+      const docRef = doc(db, "headache_logs", logId);
+      const docSnap = await getDoc(docRef);
+      if (!docSnap.exists()) {
+        return null;
+      }
+      return sanitizeHeadacheLogStrings({
+        id: docSnap.id,
+        ...(docSnap.data() as Omit<HeadacheLog, "id">),
+      });
+    } catch (error) {
+      console.error("Error getting headache log:", error);
+      throw new Error("頭痛記録の取得に失敗しました");
+    }
+  }
+
+  static async createLog(data: Omit<HeadacheLog, "id">): Promise<string> {
+    try {
+      const collectionRef = collection(db, "headache_logs");
+      const sanitized = sanitizeHeadacheLogStrings(data);
+      const payload = omitUndefinedDeep(sanitized);
+      const docRef = await addDoc(collectionRef, payload as Record<string, unknown>);
+      return docRef.id;
+    } catch (error) {
+      console.error("Error creating headache log:", error);
+      throw new Error("頭痛記録の作成に失敗しました");
+    }
+  }
+
+  static async updateLog(logId: string, data: HeadacheLogUpdateData): Promise<void> {
+    try {
+      const docRef = doc(db, "headache_logs", logId);
+      const sanitized = sanitizeHeadacheLogStrings(data);
+      const payload = omitUndefinedDeep(sanitized);
+      await updateDoc(docRef, payload as Record<string, unknown>);
+    } catch (error) {
+      console.error("Error updating headache log:", error);
+      throw new Error("頭痛記録の更新に失敗しました");
+    }
+  }
+
+  static async deleteLog(logId: string): Promise<void> {
+    try {
+      const docRef = doc(db, "headache_logs", logId);
+      await deleteDoc(docRef);
+    } catch (error) {
+      console.error("Error deleting headache log:", error);
+      throw new Error("頭痛記録の削除に失敗しました");
     }
   }
 }

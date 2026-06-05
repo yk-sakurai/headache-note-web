@@ -47,8 +47,14 @@ export default function Header() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <h1 className="text-xl font-semibold text-gray-900">頭痛ノート</h1>
-            <nav className="ml-6 mr-auto">
+            <nav className="ml-6 mr-auto flex items-center gap-4">
               <a href="/pricing" className="text-sm text-gray-700 hover:text-gray-900">料金</a>
+              {user && (
+                <>
+                  <a href="/home" className="text-sm text-gray-700 hover:text-gray-900">ホーム</a>
+                  <a href="/account" className="text-sm text-gray-700 hover:text-gray-900">アカウント</a>
+                </>
+              )}
             </nav>
             
             {user ? (

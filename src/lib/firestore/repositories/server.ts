@@ -7,7 +7,9 @@ import {
   CheckoutSession,
   AuditLog,
   Device,
+  HeadacheLog,
 } from "../types";
+import { omitUndefinedDeep, sanitizeHeadacheLogStrings } from "./sanitize";
 
 const db = getAdminDb();
 
@@ -533,6 +535,96 @@ export class DeviceRepository {
     } catch (error) {
       console.error("Error getting valid devices for push:", error);
       throw new Error("プッシュ通知可能なデバイスの取得に失敗しました");
+    }
+  }
+}
+
+/**
+ * HeadacheLog Repository (Server-side)
+ */
+export class HeadacheLogRepository {
+  static async listLogs(uid: string, limit: number = 50): Promise<HeadacheLog[]> {
+    try {
+      const collectionRef = db.collection("headache_logs");
+      const snapshot = await collectionRef.where("userId", "==", uid).get();
+      const toMillis = (value: HeadacheLog["timing"]): number => {
+        if (!value || typeof value !== "object") {
+          return 0;
+        }
+
+        if (typeof (value as any).toMillis === "function") {
+          return (value as any).toMillis();
+        }
+
+        if (typeof (value as any).seconds === "number") {
+          const seconds = (value as any).seconds as number;
+          const nanos = typeof (value as any).nanoseconds === "number" ? (value as any).nanoseconds as number : 0;
+          return seconds * 1000 + nanos / 1_000_000;
+        }
+
+        return 0;
+      };
+
+      const logs = snapshot.docs
+        .map((doc) =>
+          sanitizeHeadacheLogStrings({ id: doc.id, ...(doc.data() as Omit<HeadacheLog, "id">) })
+        )
+        .sort((a, b) => toMillis(b.timing) - toMillis(a.timing));
+
+      return limit > 0 ? logs.slice(0, limit) : logs;
+    } catch (error) {
+      console.error("Error listing headache logs:", error);
+      throw new Error("頭痛記録の取得に失敗しました");
+    }
+  }
+
+  static async getLog(logId: string): Promise<HeadacheLog | null> {
+    try {
+      const docRef = db.collection("headache_logs").doc(logId);
+      const docSnap = await docRef.get();
+      if (!docSnap.exists) {
+        return null;
+      }
+      const data = docSnap.data() as Omit<HeadacheLog, "id">;
+      return sanitizeHeadacheLogStrings({ id: docSnap.id, ...data }) as HeadacheLog;
+    } catch (error) {
+      console.error("Error getting headache log:", error);
+      throw new Error("頭痛記録の取得に失敗しました");
+    }
+  }
+
+  static async createLog(data: Omit<HeadacheLog, "id">): Promise<string> {
+    try {
+      const collectionRef = db.collection("headache_logs");
+      const sanitized = sanitizeHeadacheLogStrings(data);
+      const payload = omitUndefinedDeep(sanitized);
+      const docRef = await collectionRef.add(payload as Record<string, unknown>);
+      return docRef.id;
+    } catch (error) {
+      console.error("Error creating headache log:", error);
+      throw new Error("頭痛記録の作成に失敗しました");
+    }
+  }
+
+  static async updateLog(logId: string, data: Partial<Omit<HeadacheLog, "id">>): Promise<void> {
+    try {
+      const docRef = db.collection("headache_logs").doc(logId);
+      const sanitized = sanitizeHeadacheLogStrings(data);
+      const payload = omitUndefinedDeep(sanitized);
+      await docRef.update(payload as Record<string, unknown>);
+    } catch (error) {
+      console.error("Error updating headache log:", error);
+      throw new Error("頭痛記録の更新に失敗しました");
+    }
+  }
+
+  static async deleteLog(logId: string): Promise<void> {
+    try {
+      const docRef = db.collection("headache_logs").doc(logId);
+      await docRef.delete();
+    } catch (error) {
+      console.error("Error deleting headache log:", error);
+      throw new Error("頭痛記録の削除に失敗しました");
     }
   }
 }
