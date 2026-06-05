@@ -16,7 +16,18 @@
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+    --brand-primary: #F5FFFA;
+    --brand-on-primary: #ffffff;
   }
+
+  input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+  }
+}
+
+:root {
+  --brand-primary: #15803D;
+  --brand-on-primary: #ffffff;
 }
 
 body {
