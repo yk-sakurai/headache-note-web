@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="頭痛ノート ロゴ">
+  <path d="M18 7h23l9 9v40a5 5 0 0 1-5 5H18a5 5 0 0 1-5-5V12a5 5 0 0 1 5-5Z" fill="#FDFEF8" stroke="#17211D" stroke-linejoin="round" stroke-width="2.2"/>
+  <path d="M41 7v9h9" fill="none" stroke="#17211D" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2"/>
+  <path d="M32 40.8c.7 4.9 3.5 8 8.7 9.7" fill="none" stroke="#008F6D" stroke-linecap="round" stroke-width="2.8"/>
+  <g fill="#00A67E">
+    <ellipse cx="27.2" cy="29.4" rx="7.4" ry="5.4" transform="rotate(42 27.2 29.4)"/>
+    <ellipse cx="36.8" cy="29.4" rx="7.4" ry="5.4" transform="rotate(-42 36.8 29.4)"/>
+    <ellipse cx="27.2" cy="39.1" rx="7.4" ry="5.4" transform="rotate(-42 27.2 39.1)"/>
+    <ellipse cx="36.8" cy="39.1" rx="7.4" ry="5.4" transform="rotate(42 36.8 39.1)"/>
+  </g>
+</svg>

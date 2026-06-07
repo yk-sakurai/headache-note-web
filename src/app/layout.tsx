@@ -16,17 +16,17 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "頭痛ノート",
-  description: "あなたの頭痛をより深く理解する",
+  description: "頭痛の強さ、薬、メモをまとめて記録し、必要なときに落ち着いて振り返れる頭痛記録アプリです。",
   openGraph: {
     title: "頭痛ノート",
-    description: "あなたの頭痛をより深く理解する",
+    description: "頭痛の強さ、薬、メモをまとめて記録し、必要なときに落ち着いて振り返れる頭痛記録アプリです。",
     type: "website",
     locale: "ja_JP",
   },
   twitter: {
     card: "summary_large_image",
     title: "頭痛ノート",
-    description: "あなたの頭痛をより深く理解する",
+    description: "頭痛の強さ、薬、メモをまとめて記録し、必要なときに落ち着いて振り返れる頭痛記録アプリです。",
   },
 };
 
@@ -36,7 +36,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="ja">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
