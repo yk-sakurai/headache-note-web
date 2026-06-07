@@ -1,8 +1,28 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --brand-primary: #00a67e;
+  --brand-primary-hover: #008f6d;
+  --brand-primary-active: #007a5d;
+  --brand-primary-soft: #e6f8f2;
+  --brand-mint-bg: #f1fbf7;
+  --brand-mint-border: #cfe8df;
+  --brand-cream: #fffcf2;
+  --surface: #ffffff;
+  --surface-muted: #f8faf9;
+  --border: #dce9e4;
+  --border-subtle: #e8f0ec;
+  --text-primary: #17211d;
+  --text-secondary: #50615b;
+  --text-muted: #7a8984;
+  --danger: #ff3b30;
+  --danger-soft: #fff0ee;
+  --warning: #f59e0b;
+  --info: #1e88e5;
+  --background: var(--brand-mint-bg);
+  --foreground: var(--text-primary);
+  --brand-on-primary: #ffffff;
+  --shadow-soft: 0 10px 30px rgb(23 33 29 / 0.08);
 }
 
 @theme inline {
@@ -12,26 +32,65 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-    --brand-primary: #F5FFFA;
-    --brand-on-primary: #ffffff;
-  }
-
-  input[type="datetime-local"]::-webkit-calendar-picker-indicator {
-    filter: invert(1);
-  }
-}
-
-:root {
-  --brand-primary: #15803D;
-  --brand-on-primary: #ffffff;
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
+  color-scheme: light;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+::selection {
+  background: var(--brand-primary-soft);
+  color: var(--brand-primary-active);
+}
+
+@keyframes calm-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes calm-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-calm-fade-up {
+  animation: calm-fade-up 520ms ease-out both;
+}
+
+.animate-calm-fade-in {
+  animation: calm-fade-in 420ms ease-out both;
+}
+
+.calm-transition {
+  transition-duration: 180ms;
+  transition-property: background-color, border-color, color, opacity, transform, box-shadow;
+  transition-timing-function: ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
+  }
 }
