@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ButtonHTMLAttributes, ReactNode } from "react";
+import { ButtonHTMLAttributes, MouseEvent, ReactNode } from "react";
 
 type ButtonVariant = "primary" | "secondary";
 
@@ -7,15 +7,16 @@ interface BaseButtonProps {
   children: ReactNode;
   variant?: ButtonVariant;
   disabled?: boolean;
+  className?: string;
 }
 
-interface ButtonAsButton extends BaseButtonProps, Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> {
+interface ButtonAsButton extends BaseButtonProps, Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children" | "className" | "disabled"> {
   href?: never;
 }
 
 interface ButtonAsLink extends BaseButtonProps {
   href: string;
-  onClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void;
+  onClick?: (e: MouseEvent<HTMLAnchorElement>) => void;
   type?: never;
 }
 
@@ -23,9 +24,9 @@ type ButtonProps = ButtonAsButton | ButtonAsLink;
 
 const variantStyles: Record<ButtonVariant, string> = {
   primary:
-    "text-[color:var(--brand-on-primary)] bg-[color:var(--brand-primary)] hover:brightness-95",
+    "border border-[color:var(--brand-primary)] bg-[color:var(--brand-primary)] text-[color:var(--brand-on-primary)] shadow-sm hover:border-[color:var(--brand-primary-hover)] hover:bg-[color:var(--brand-primary-hover)] active:bg-[color:var(--brand-primary-active)]",
   secondary:
-    "text-gray-700 bg-gray-200 hover:text-gray-900 hover:bg-gray-300",
+    "border border-[color:var(--border)] bg-[color:var(--surface)] text-[color:var(--text-secondary)] hover:border-[color:var(--brand-mint-border)] hover:bg-[color:var(--brand-primary-soft)] hover:text-[color:var(--brand-primary-active)] active:bg-[color:var(--brand-mint-bg)]",
 };
 
 export default function Button({
@@ -33,19 +34,20 @@ export default function Button({
   variant = "primary",
   disabled = false,
   href,
+  className = "",
   ...props
 }: ButtonProps) {
   const baseStyles =
-    "inline-flex h-11 items-center justify-center rounded-full px-6 text-sm font-medium transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none";
+    "inline-flex h-10 items-center justify-center rounded-lg px-5 text-sm font-medium calm-transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--surface)] disabled:pointer-events-none disabled:opacity-50";
   
-  const className = `${baseStyles} ${variantStyles[variant]}`;
+  const composedClassName = `${baseStyles} ${variantStyles[variant]} ${className}`;
 
   if (href) {
     const linkProps = props as ButtonAsLink;
     return (
       <Link 
         href={href} 
-        className={`${className} ${disabled ? 'pointer-events-none opacity-50' : ''}`}
+        className={`${composedClassName} ${disabled ? "pointer-events-none opacity-50" : ""}`}
         onClick={linkProps.onClick}
         aria-disabled={disabled}
       >
@@ -56,7 +58,7 @@ export default function Button({
 
   return (
     <button
-      className={className}
+      className={composedClassName}
       disabled={disabled}
       {...(props as ButtonHTMLAttributes<HTMLButtonElement>)}
     >
