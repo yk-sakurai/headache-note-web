@@ -44,6 +44,7 @@ export default function Header() {
   const isAuthEntryPage =
     pathname === "/signup" ||
     pathname === "/login" ||
+    pathname === "/password-reset" ||
     pathname === "/resend-verification";
 
   useEffect(() => {

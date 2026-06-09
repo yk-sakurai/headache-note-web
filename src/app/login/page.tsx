@@ -23,6 +23,14 @@ function mapAuthErrorToMessage(code: string): string {
   }
 }
 
+async function safeSignOut() {
+  try {
+    await signOut();
+  } catch {
+    // セッション cookie 未作成時の導線表示を優先する。
+  }
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -31,11 +39,13 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [needsVerification, setNeedsVerification] = useState(false);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError("");
+    setNeedsVerification(false);
     setLoading(true);
     try {
       const credential = await signInWithEmailPassword(email, password);
@@ -50,7 +60,17 @@ export default function LoginPage() {
       });
 
       if (!response.ok) {
-        await signOut();
+        const body = await response.json().catch(() => null);
+        await safeSignOut();
+        if (
+          response.status === 403 &&
+          body &&
+          typeof body === "object" &&
+          (body as { code?: unknown }).code === "email-not-verified"
+        ) {
+          setNeedsVerification(true);
+          return;
+        }
         throw new Error("Failed to create session");
       }
 
@@ -69,7 +89,10 @@ export default function LoginPage() {
         <h1 className="text-xl font-semibold text-center">ログイン</h1>
 
         {error && (
-          <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2">
+          <div
+            role="alert"
+            className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2"
+          >
             {error}
           </div>
         )}
@@ -112,12 +135,27 @@ export default function LoginPage() {
           {loading ? "送信中..." : "送信"}
         </button>
 
+        {needsVerification && (
+          <div
+            role="alert"
+            className="rounded border border-[color:var(--brand-mint-border)] bg-[color:var(--brand-primary-soft)] px-3 py-3 text-sm leading-6 text-[color:var(--text-primary)]"
+          >
+            <p>メールアドレスの確認が必要です。</p>
+            <Link
+              href="/resend-verification"
+              className="mt-2 inline-block font-medium text-[color:var(--brand-primary-active)] hover:underline"
+            >
+              確認メールを再送する
+            </Link>
+          </div>
+        )}
+
         <div className="flex flex-col items-center gap-3 text-center">
           <Link
-            href="/resend-verification"
+            href="/password-reset"
             className="inline-block text-sm font-medium text-[color:var(--brand-primary-active)] hover:underline"
           >
-            確認メールを再送する
+            パスワードをお忘れですか？
           </Link>
           <Link
             href="/"

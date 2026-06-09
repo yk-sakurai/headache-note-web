@@ -4,6 +4,7 @@ import {
   connectAuthEmulator,
   createUserWithEmailAndPassword,
   sendEmailVerification,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
   type User,
@@ -22,6 +23,10 @@ export async function signUpWithEmailPassword(email: string, password: string) {
 
 export async function sendVerificationEmail(user: User) {
   return await sendEmailVerification(user);
+}
+
+export async function sendPasswordReset(email: string) {
+  return await sendPasswordResetEmail(auth, email);
 }
 
 export async function signOut() {

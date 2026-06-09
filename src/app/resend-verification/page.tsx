@@ -89,6 +89,11 @@ export default function ResendVerificationPage() {
           {view === "sent" ? (
             <div className="mt-7 rounded-lg border border-[color:var(--brand-mint-border)] bg-[color:var(--brand-primary-soft)] px-4 py-4 text-sm leading-6 text-[color:var(--text-primary)]">
               入力内容を確認しました。必要な場合は確認メールを送信しています。
+              {cooldown > 0 && (
+                <p className="mt-2 text-[color:var(--text-secondary)]">
+                  再送できるようになるまで {cooldown} 秒ほどお待ちください。
+                </p>
+              )}
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="mt-7 space-y-5">
