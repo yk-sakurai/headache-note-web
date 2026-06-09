@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { adminAuth } from "@/lib/firebase/admin";
 import { SESSION_COOKIE_NAME, SESSION_DURATION_MS } from "@/lib/constants";
+import { UserRepository } from "@/lib/firestore/repositories/server";
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,6 +14,27 @@ export async function POST(request: NextRequest) {
         { error: "idToken is required" },
         { status: 400 }
       );
+    }
+
+    const decodedToken = await adminAuth.verifyIdToken(idToken, true);
+
+    if (decodedToken.email_verified !== true) {
+      return NextResponse.json(
+        { error: "Email is not verified", code: "email-not-verified" },
+        { status: 403 }
+      );
+    }
+
+    const email = typeof decodedToken.email === "string" ? decodedToken.email : "";
+    const existingUser = await UserRepository.getUser(decodedToken.uid);
+
+    if (!existingUser) {
+      await UserRepository.createUser(decodedToken.uid, { email });
+    } else {
+      if (email) {
+        await UserRepository.updateUser(decodedToken.uid, { email });
+      }
+      await UserRepository.updateLastLogin(decodedToken.uid);
     }
 
     const sessionCookie = await adminAuth.createSessionCookie(idToken, {

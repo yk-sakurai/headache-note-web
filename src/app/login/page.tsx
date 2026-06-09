@@ -2,7 +2,7 @@
 import { useState, FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { signInWithEmailPassword } from "@/lib/firebase/auth.client";
+import { signInWithEmailPassword, signOut } from "@/lib/firebase/auth.client";
 
 function mapAuthErrorToMessage(code: string): string {
   switch (code) {
@@ -38,10 +38,8 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      await signInWithEmailPassword(email, password);
-      
-      const { getIdToken } = await import("@/lib/firebase/auth.client");
-      const idToken = await getIdToken();
+      const credential = await signInWithEmailPassword(email, password);
+      const idToken = await credential.user.getIdToken();
       
       const response = await fetch("/api/auth/session-login", {
         method: "POST",
@@ -52,6 +50,7 @@ export default function LoginPage() {
       });
 
       if (!response.ok) {
+        await signOut();
         throw new Error("Failed to create session");
       }
 
@@ -113,10 +112,16 @@ export default function LoginPage() {
           {loading ? "送信中..." : "送信"}
         </button>
 
-        <div className="text-center">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <Link
+            href="/resend-verification"
+            className="inline-block text-sm font-medium text-[color:var(--brand-primary-active)] hover:underline"
+          >
+            確認メールを再送する
+          </Link>
           <Link
             href="/"
-            className="inline-block text-sm text-color:white hover:underline"
+            className="inline-block text-sm text-[color:var(--brand-primary-active)] hover:underline"
           >
             ホームに戻る
           </Link>

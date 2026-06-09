@@ -1,11 +1,27 @@
 "use client";
-import { getAuth, connectAuthEmulator, signInWithEmailAndPassword, signOut as firebaseSignOut } from "firebase/auth";
+import {
+  getAuth,
+  connectAuthEmulator,
+  createUserWithEmailAndPassword,
+  sendEmailVerification,
+  signInWithEmailAndPassword,
+  signOut as firebaseSignOut,
+  type User,
+} from "firebase/auth";
 import { firebaseApp } from "./app";
 
 export const auth = getAuth(firebaseApp);
 
 export async function signInWithEmailPassword(email: string, password: string) {
   return await signInWithEmailAndPassword(auth, email, password);
+}
+
+export async function signUpWithEmailPassword(email: string, password: string) {
+  return await createUserWithEmailAndPassword(auth, email, password);
+}
+
+export async function sendVerificationEmail(user: User) {
+  return await sendEmailVerification(user);
 }
 
 export async function signOut() {
