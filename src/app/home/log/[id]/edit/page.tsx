@@ -65,7 +65,11 @@ const buildMedicationPayload = (
 
     result.push({
       name,
-      dosage: Number.isFinite(medication.dosage) ? medication.dosage : 0,
+      dosage:
+        typeof medication.dosage === "number" &&
+        Number.isFinite(medication.dosage)
+          ? medication.dosage
+          : 0,
       unit,
       takenAt,
       ...(medication.effectiveness !== undefined
