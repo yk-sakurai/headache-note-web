@@ -1,9 +1,16 @@
+import packageJson from "../../package.json";
+
 /**
  * Firebase Hostingで使用するセッションCookieの名前
  * 
  * @see https://firebase.google.com/docs/hosting/manage-cache#using_cookies
  */
 export const SESSION_COOKIE_NAME = "__session" as const;
+
+/**
+ * Webアプリのバージョン
+ */
+export const APP_VERSION = packageJson.version;
 
 /**
  * セッションCookieの有効期限（ミリ秒）

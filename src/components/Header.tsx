@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { auth, signOut } from "@/lib/firebase/auth.client";
 import Button from "./Button";
@@ -35,18 +35,33 @@ function LogoMark() {
 
 export default function Header() {
   const router = useRouter();
+  const pathname = usePathname();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(false);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
+  const isAuthEntryPage =
+    pathname === "/signup" ||
+    pathname === "/login" ||
+    pathname === "/password-reset" ||
+    pathname === "/resend-verification";
+
   useEffect(() => {
+    if (isAuthEntryPage) {
+      return;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setMenuOpen(false);
     });
     return () => unsubscribe();
-  }, []);
+  }, [isAuthEntryPage]);
+
+  if (isAuthEntryPage) {
+    return null;
+  }
 
   function handleLogoutClick() {
     setShowLogoutDialog(true);
@@ -111,7 +126,7 @@ export default function Header() {
                   <Button href="/login" variant="secondary" className="h-9 px-3 text-xs sm:h-10 sm:px-5 sm:text-sm">
                     ログイン
                   </Button>
-                  <Button href="/login?redirect=/pricing" className="h-9 px-3 text-xs sm:h-10 sm:px-5 sm:text-sm">
+                  <Button href="/signup" className="h-9 px-3 text-xs sm:h-10 sm:px-5 sm:text-sm">
                     <span className="sm:hidden">登録</span>
                     <span className="hidden sm:inline">ユーザー登録</span>
                   </Button>
