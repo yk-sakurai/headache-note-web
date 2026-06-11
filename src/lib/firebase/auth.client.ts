@@ -87,6 +87,14 @@ export async function getIdToken(): Promise<string> {
   return await user.getIdToken();
 }
 
+export async function getFreshIdToken(): Promise<string> {
+  const user = getCurrentUser();
+  if (!user) {
+    throw new Error("No user is signed in");
+  }
+  return await user.getIdToken(true);
+}
+
 if (process.env.NEXT_PUBLIC_USE_EMULATORS === "true") {
   connectAuthEmulator(auth, "http://localhost:9099", { disableWarnings: true });
 }

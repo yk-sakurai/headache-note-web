@@ -2,7 +2,15 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { adminAuth } from "@/lib/firebase/admin";
 import { SESSION_COOKIE_NAME } from "@/lib/constants";
-import { UserRepository } from "@/lib/firestore/repositories/server";
+import {
+  SubscriptionRepository,
+  UserRepository,
+} from "@/lib/firestore/repositories/server";
+import {
+  isActiveSubscriber,
+  isCancelScheduled,
+  isTrialing,
+} from "@/lib/firestore/helpers";
 import ProfileMenu from "./ProfileMenu";
 
 export default async function AccountPage() {
@@ -28,6 +36,18 @@ export default async function AccountPage() {
 
   const user = await UserRepository.getUser(uid);
   const email = user?.email || verifiedEmail;
+  const subscription = await SubscriptionRepository.getSubscription(uid);
+  const withdrawalBlocked =
+    isActiveSubscriber(subscription) && !isCancelScheduled(subscription);
+  const withdrawalWarnsRemainingPeriod =
+    (isActiveSubscriber(subscription) && isCancelScheduled(subscription)) ||
+    isTrialing(subscription);
 
-  return <ProfileMenu email={email} />;
+  return (
+    <ProfileMenu
+      email={email}
+      withdrawalBlocked={withdrawalBlocked}
+      withdrawalWarnsRemainingPeriod={withdrawalWarnsRemainingPeriod}
+    />
+  );
 }

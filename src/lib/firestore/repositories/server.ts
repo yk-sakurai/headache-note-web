@@ -8,6 +8,7 @@ import {
   AuditLog,
   Device,
   HeadacheLog,
+  UserAppVersion,
 } from "../types";
 import { omitUndefinedDeep, sanitizeHeadacheLogStrings } from "./sanitize";
 
@@ -101,6 +102,88 @@ export class UserRepository {
     } catch (error) {
       console.error("Error setting Stripe customer ID:", error);
       throw new Error("Stripe顧客IDの設定に失敗しました");
+    }
+  }
+
+  static async markUserAsDeleted(uid: string, deletedAt: FieldValue): Promise<void> {
+    try {
+      const docRef = db.collection("users").doc(uid);
+      await docRef.set(
+        {
+          isDeleted: true,
+          deletedAt,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    } catch (error) {
+      console.error("Error marking user as deleted:", error);
+      throw new Error("ユーザーの論理削除に失敗しました");
+    }
+  }
+}
+
+/**
+ * UserAppVersion Repository (Server-side)
+ */
+export class UserAppVersionRepository {
+  static async getByUserId(uid: string): Promise<UserAppVersion | null> {
+    try {
+      const snapshot = await db
+        .collection("user_app_versions")
+        .where("userId", "==", uid)
+        .limit(1)
+        .get();
+
+      if (snapshot.empty) {
+        return null;
+      }
+
+      return snapshot.docs[0].data() as UserAppVersion;
+    } catch (error) {
+      console.error("Error getting user app version:", error);
+      throw new Error("アプリバージョン情報の取得に失敗しました");
+    }
+  }
+
+  static async upsert(
+    uid: string,
+    data: Pick<UserAppVersion, "currentVersion" | "platform" | "osVersion">
+  ): Promise<void> {
+    try {
+      const snapshot = await db
+        .collection("user_app_versions")
+        .where("userId", "==", uid)
+        .limit(1)
+        .get();
+
+      const now = FieldValue.serverTimestamp();
+
+      if (snapshot.empty) {
+        await db.collection("user_app_versions").add({
+          userId: uid,
+          currentVersion: data.currentVersion,
+          platform: data.platform,
+          osVersion: data.osVersion,
+          firstSeenVersion: data.currentVersion,
+          firstSeenAt: now,
+          lastSeenAt: now,
+        });
+        return;
+      }
+
+      await snapshot.docs[0].ref.set(
+        {
+          currentVersion: data.currentVersion,
+          platform: data.platform,
+          osVersion: data.osVersion,
+          lastSeenAt: now,
+        },
+        { merge: true }
+      );
+    } catch (error) {
+      console.error("Error upserting user app version:", error);
+      throw new Error("アプリバージョン情報の保存に失敗しました");
     }
   }
 }
@@ -624,6 +707,40 @@ export class HeadacheLogRepository {
       await docRef.delete();
     } catch (error) {
       console.error("Error deleting headache log:", error);
+      throw new Error("頭痛記録の削除に失敗しました");
+    }
+  }
+
+  static async deleteLogsByUserId(uid: string): Promise<void> {
+    try {
+      const snapshot = await db
+        .collection("headache_logs")
+        .where("userId", "==", uid)
+        .get();
+
+      if (snapshot.empty) {
+        return;
+      }
+
+      let batch = db.batch();
+      let count = 0;
+
+      for (const doc of snapshot.docs) {
+        batch.delete(doc.ref);
+        count += 1;
+
+        if (count === 500) {
+          await batch.commit();
+          batch = db.batch();
+          count = 0;
+        }
+      }
+
+      if (count > 0) {
+        await batch.commit();
+      }
+    } catch (error) {
+      console.error("Error deleting headache logs by user:", error);
       throw new Error("頭痛記録の削除に失敗しました");
     }
   }

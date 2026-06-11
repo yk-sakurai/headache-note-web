@@ -89,6 +89,7 @@ interface User {
 3. 初回決済時に stripeCustomerId を更新
    ↓
 4. ログインごとに lastLoginAt を更新
+5. Webの退会処理時は `isDeleted: true` と `deletedAt` を設定し、ドキュメント自体は保持
 ```
 
 ### アクセス制御
@@ -1550,8 +1551,8 @@ interface UserAppVersion {
 |-----------|-----|------|------|
 | `userId` | `string` | ✅ | ユーザーID。 |
 | `currentVersion` | `string` | ✅ | 現在のアプリバージョン。例: `"1.2.3"` |
-| `platform` | `string` | ✅ | プラットフォーム。`ios` または `android`。 |
-| `osVersion` | `string` | ✅ | OSバージョン。 |
+| `platform` | `string` | ✅ | プラットフォーム。`ios` / `android` / `web`。Webログイン時は `"web"` を保存。 |
+| `osVersion` | `string` | ✅ | OSバージョン。Webログイン時はUser-Agentから判定した `"macOS"` / `"Windows"` / `"iOS"` / `"Android"` / `"Linux"` / `"unknown"` を保存。 |
 | `firstSeenVersion` | `string` | ✅ | 初回インストール時のアプリバージョン。 |
 | `firstSeenAt` | `Timestamp` | ✅ | 初回確認日時。 |
 | `lastSeenAt` | `Timestamp` | ✅ | 最終確認日時。 |
@@ -1561,6 +1562,10 @@ interface UserAppVersion {
 - **読み取り**: 認証済みユーザーのみ可能
 - **書き込み**: 認証済みユーザーのみ可能
 
+### Webでの更新仕様
+
+Webアプリでは `POST /api/auth/session-login` 成功時に、Admin SDKで `user_app_versions` をupsertします。ユーザーごとに1ドキュメントの構造を維持し、既存ドキュメントがある場合は `firstSeenVersion` / `firstSeenAt` を保持したまま `currentVersion` / `platform` / `osVersion` / `lastSeenAt` を更新します。`currentVersion` はWebアプリの `package.json` の `version`、`platform` は `"web"` です。
+
 ---
 
 ## 20. DeletedUserSnapshot コレクション
@@ -1568,6 +1573,8 @@ interface UserAppVersion {
 **パス**: `deleted_user_snapshots/{uid}`
 
 **役割**: 削除されたユーザーの統計スナップショットを保存します。離脱分析とサービス改善に使用されます。
+
+Webの退会処理でもモバイルアプリと同じフィールド構成で `deleted_user_snapshots/{uid}` を作成します。追加のWeb専用フィールドは持たせず、Webログイン後に退会した場合は `devicePlatform` が `"web"`、`appVersion` がWebアプリの `package.json` の `version` になることがあります。
 
 ### 型定義
 
@@ -1644,12 +1651,12 @@ interface AiReportTokenUsageAverage {
 | `trialStartedAt` | `Timestamp?` | - | トライアル開始日時。 |
 | `trialEndedAt` | `Timestamp?` | - | トライアル終了日時。 |
 | `aiReportRequests` | `AiReportRequestsSnapshot?` | - | AIレポートリクエストの統計スナップショット。総リクエスト数、成功・失敗数、ソース別カウントなどを含む。 |
-| `aiReports` | `AiReportsSnapshot?` | - | AIレポートの統計スナップショット。総レポート数、平均トークン使用量、モデル別・ソース別カウントなどを含む。 |
+| `aiReports` | `AiReportsSnapshot?` | - | AIレポートの統計スナップショット。総レポート数、平均トークン使用量、モデル別・ソース別カウントなどを含む。`averageTokenUsage` は各トークンフィールドの非null件数を分母に小数のまま平均し、集計対象がないフィールドは保存しません。 |
 | `inputSetTotalCount` | `number?` | - | マイセット作成数。 |
 | `usageTrackingSummary` | `Map?` | - | 頭痛ログ操作トラッキング集計（create/update/delete/inputSetUsed等）。 |
 | `subscriptionStatus` | `string?` | - | サブスクリプションステータス（active/trialing/canceled等）。 |
 | `subscriptionPlatform` | `string?` | - | サブスクリプションプラットフォーム（web/ios/android）。 |
-| `devicePlatform` | `string?` | - | デバイスプラットフォーム（ios/android）。 |
+| `devicePlatform` | `string?` | - | デバイスプラットフォーム（ios/android/web）。 |
 | `appVersion` | `string?` | - | アプリバージョン。 |
 | `headacheAlertAccuracy` | `Map?` | - | 頭痛警戒度の的中率データ（headacheRate, headacheDays, totalDays）。 |
 
@@ -1657,6 +1664,10 @@ interface AiReportTokenUsageAverage {
 
 - **読み取り**: 不可（管理者のみ）
 - **書き込み**: 不可（サーバーサイドのみ）
+
+### Web退会処理での削除範囲
+
+Webの退会処理は、スナップショット作成後に `headache_logs` / `headache_log_preferences` / `privacy_consents` / `user_app_versions` / `users/{uid}/ai_report_requests` / `users/{uid}/ai_reports` / `users/{uid}/ai_report_preferences/auto_generation` / `headache_log_input_sets` / `users/{uid}/usage_tracking/headacheLogUsage` / `users/{uid}/devices` / `users/{uid}/userSettings/location` / `users/{uid}/userSettings/headacheAlertLocation` / `users/{uid}/metrics/headacheAlertAccuracy` を削除します。`users/{uid}` は論理削除のみ、`subscriptions/{uid}` / `invoices` / `checkout_sessions` / `audit_logs` は保持します。
 
 ---
 

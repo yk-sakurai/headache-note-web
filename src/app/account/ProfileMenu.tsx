@@ -1,7 +1,16 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import WithdrawalRow from "./WithdrawalRow";
 
-export default function ProfileMenu({ email }: { email: string }) {
+export default function ProfileMenu({
+  email,
+  withdrawalBlocked,
+  withdrawalWarnsRemainingPeriod,
+}: {
+  email: string;
+  withdrawalBlocked: boolean;
+  withdrawalWarnsRemainingPeriod: boolean;
+}) {
   return (
     <main className="min-h-screen bg-[color:var(--brand-mint-bg)]">
       <div className="mx-auto w-full max-w-screen-lg px-5 py-12 text-[color:var(--text-primary)] sm:px-8 sm:py-16">
@@ -27,6 +36,19 @@ export default function ProfileMenu({ email }: { email: string }) {
               title="パスワード"
               subtitle="非表示"
               icon={<LockIcon />}
+            />
+          </div>
+        </section>
+
+        <section className="mt-12 space-y-5">
+          <h2 className="text-2xl font-semibold tracking-normal text-red-700 sm:text-3xl">
+            退会
+          </h2>
+
+          <div className="overflow-hidden rounded-lg border border-red-100 bg-[color:var(--surface)]">
+            <WithdrawalRow
+              blocked={withdrawalBlocked}
+              warnsRemainingPeriod={withdrawalWarnsRemainingPeriod}
             />
           </div>
         </section>

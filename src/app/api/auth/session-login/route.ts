@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { adminAuth } from "@/lib/firebase/admin";
-import { SESSION_COOKIE_NAME, SESSION_DURATION_MS } from "@/lib/constants";
-import { UserRepository } from "@/lib/firestore/repositories/server";
+import { APP_VERSION, SESSION_COOKIE_NAME, SESSION_DURATION_MS } from "@/lib/constants";
+import {
+  UserAppVersionRepository,
+  UserRepository,
+} from "@/lib/firestore/repositories/server";
+import { detectOsFromUserAgent } from "@/lib/user-agent";
 
 export async function POST(request: NextRequest) {
   try {
@@ -35,6 +39,16 @@ export async function POST(request: NextRequest) {
         await UserRepository.updateUser(decodedToken.uid, { email });
       }
       await UserRepository.updateLastLogin(decodedToken.uid);
+    }
+
+    try {
+      await UserAppVersionRepository.upsert(decodedToken.uid, {
+        currentVersion: APP_VERSION,
+        platform: "web",
+        osVersion: detectOsFromUserAgent(request.headers.get("user-agent")),
+      });
+    } catch (error) {
+      console.warn("Failed to update user app version:", error);
     }
 
     const sessionCookie = await adminAuth.createSessionCookie(idToken, {
