@@ -15,6 +15,7 @@ import {
   setDoc,
   updateDoc,
   deleteDoc,
+  Timestamp,
 } from "firebase/firestore";
 import type { FieldValue } from "firebase/firestore";
 import {
@@ -277,6 +278,30 @@ export class ClientHeadacheLogRepository {
       );
     } catch (error) {
       console.error("Error listing headache logs:", error);
+      throw new Error("頭痛記録の取得に失敗しました");
+    }
+  }
+
+  static async listLogsInRange(
+    uid: string,
+    startMs: number,
+    endMs: number
+  ): Promise<HeadacheLog[]> {
+    try {
+      const logsRef = collection(db, "headache_logs");
+      const q = query(
+        logsRef,
+        where("userId", "==", uid),
+        where("timing", ">=", Timestamp.fromMillis(startMs)),
+        where("timing", "<=", Timestamp.fromMillis(endMs)),
+        orderBy("timing", "desc")
+      );
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.docs.map((d) =>
+        sanitizeHeadacheLogStrings({ id: d.id, ...(d.data() as Omit<HeadacheLog, "id">) })
+      );
+    } catch (error) {
+      console.error("Error listing headache logs in range:", error);
       throw new Error("頭痛記録の取得に失敗しました");
     }
   }

@@ -16,6 +16,7 @@ const preLoginNavItems = [
 
 const loggedInNavItems = [
   { href: "/home", label: "ホーム" },
+  { href: "/records", label: "記録" },
   { href: "/account", label: "アカウント" },
 ];
 
@@ -86,6 +87,10 @@ export default function Header() {
     setShowLogoutDialog(false);
   }
 
+  function isActiveNavItem(href: string) {
+    return pathname === href || pathname.startsWith(`${href}/`);
+  }
+
   return (
     <>
       <header className="sticky top-0 z-40 border-b border-[color:var(--border-subtle)] bg-[color:var(--surface)]/95 backdrop-blur">
@@ -105,7 +110,11 @@ export default function Header() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className="px-1 text-sm font-medium text-[color:var(--text-secondary)] calm-transition hover:text-[color:var(--brand-primary-active)]"
+                  className={`rounded-lg px-3 py-2 text-sm font-medium calm-transition hover:bg-[color:var(--brand-primary-soft)] hover:text-[color:var(--brand-primary-active)] ${
+                    isActiveNavItem(item.href)
+                      ? "bg-[color:var(--brand-primary-soft)] text-[color:var(--brand-primary-active)]"
+                      : "text-[color:var(--text-secondary)]"
+                  }`}
                 >
                   {item.label}
                 </Link>
@@ -182,7 +191,11 @@ export default function Header() {
                   <Link
                     key={item.href}
                     href={item.href}
-                    className="rounded-lg px-3 py-2 text-sm font-medium text-[color:var(--text-secondary)] calm-transition hover:bg-[color:var(--brand-primary-soft)] hover:text-[color:var(--brand-primary-active)]"
+                    className={`rounded-lg px-3 py-2 text-sm font-medium calm-transition hover:bg-[color:var(--brand-primary-soft)] hover:text-[color:var(--brand-primary-active)] ${
+                      isActiveNavItem(item.href)
+                        ? "bg-[color:var(--brand-primary-soft)] text-[color:var(--brand-primary-active)]"
+                        : "text-[color:var(--text-secondary)]"
+                    }`}
                     onClick={() => setMenuOpen(false)}
                   >
                     {item.label}

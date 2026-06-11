@@ -1,5 +1,5 @@
 import { getAdminDb } from "@/lib/firebase/admin";
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import {
   User,
   Subscription,
@@ -11,6 +11,7 @@ import {
   UserAppVersion,
 } from "../types";
 import { omitUndefinedDeep, sanitizeHeadacheLogStrings } from "./sanitize";
+import { toMillis } from "@/lib/firestore/serializeHeadacheLog";
 
 const db = getAdminDb();
 
@@ -630,33 +631,41 @@ export class HeadacheLogRepository {
     try {
       const collectionRef = db.collection("headache_logs");
       const snapshot = await collectionRef.where("userId", "==", uid).get();
-      const toMillis = (value: HeadacheLog["timing"]): number => {
-        if (!value || typeof value !== "object") {
-          return 0;
-        }
-
-        if (typeof (value as any).toMillis === "function") {
-          return (value as any).toMillis();
-        }
-
-        if (typeof (value as any).seconds === "number") {
-          const seconds = (value as any).seconds as number;
-          const nanos = typeof (value as any).nanoseconds === "number" ? (value as any).nanoseconds as number : 0;
-          return seconds * 1000 + nanos / 1_000_000;
-        }
-
-        return 0;
-      };
 
       const logs = snapshot.docs
         .map((doc) =>
           sanitizeHeadacheLogStrings({ id: doc.id, ...(doc.data() as Omit<HeadacheLog, "id">) })
         )
-        .sort((a, b) => toMillis(b.timing) - toMillis(a.timing));
+        .sort((a, b) => (toMillis(b.timing) ?? 0) - (toMillis(a.timing) ?? 0));
 
       return limit > 0 ? logs.slice(0, limit) : logs;
     } catch (error) {
       console.error("Error listing headache logs:", error);
+      throw new Error("頭痛記録の取得に失敗しました");
+    }
+  }
+
+  static async listLogsInRange(
+    uid: string,
+    startMs: number,
+    endMs: number
+  ): Promise<HeadacheLog[]> {
+    try {
+      const collectionRef = db.collection("headache_logs");
+      const snapshot = await collectionRef
+        .where("userId", "==", uid)
+        .where("timing", ">=", Timestamp.fromMillis(startMs))
+        .where("timing", "<=", Timestamp.fromMillis(endMs))
+        .orderBy("timing", "desc")
+        .get();
+
+      return snapshot.docs
+        .map((doc) =>
+          sanitizeHeadacheLogStrings({ id: doc.id, ...(doc.data() as Omit<HeadacheLog, "id">) })
+        )
+        .sort((a, b) => (toMillis(b.timing) ?? 0) - (toMillis(a.timing) ?? 0));
+    } catch (error) {
+      console.error("Error listing headache logs in range:", error);
       throw new Error("頭痛記録の取得に失敗しました");
     }
   }
