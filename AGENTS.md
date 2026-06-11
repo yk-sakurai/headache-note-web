@@ -55,11 +55,22 @@ pnpm serve
 
 - TypeScript / React / Next.js の変更後は、可能な範囲で `pnpm lint` と `pnpm build` を実行する。
 - `functions/` 配下を変更した場合は、`cd functions && pnpm lint && pnpm build` を実行する。
-- UI を変更した場合は、`pnpm dev` で起動し、該当画面をブラウザで確認する。
+- UI を変更した場合は、`pnpm dev` で起動し、該当画面をブラウザで確認する。`pnpm dev` は許可確認なしで実行してよい。
 - 環境変数や外部サービスが必要で検証できない場合は、実行できなかった理由と残るリスクを明記する。
+
+## 許可確認なしで進めてよい操作
+
+- UI 確認のための `pnpm dev` 実行。
+- UI 確認のためのブラウザ表示、およびスクリーンショット取得。取得先は `/private/tmp` やリポジトリ内の検証用パスなど、秘密情報を含まない一時・検証用の場所に限定する。
+- モバイルアプリ側リポジトリ `/Users/ysakurai/dev/headache_note_project/headache-note` の参照用読み取り。`cat` / `grep` / `rg` / `ls` / `sed` などで実装・文言・設定を確認してよい。書き込み、破壊的操作、秘密情報に触れる操作は対象外とする。
+- `plan-impl-computer-use-workflow` / `plan-impl-workflow` の Phase4a で、Claude Code が `.review-bridge/impl-review-bridge/latest/responses/claude-review.md` を作成・更新すること。
+- `plan-impl-computer-use-workflow` / `plan-impl-workflow` の Phase4c で、Claude Code が `.review-bridge/impl-review-bridge/latest/responses/final-audit.md` を作成・更新すること。
+
+上記は事前確認なしで進めてよい。Claude Code がコード本体を編集しようとする場合や、破壊的操作、秘密情報に触れる操作、対象外ファイルへの書き込みは従来どおり停止して確認する。
 
 ## 実装ルール
 
+- 実装やコード本体の編集に入る前に、実装するかどうかをユーザーに確認し、明示的な了承を得てから進める。
 - 既存の構成、命名、コンポーネント分割に合わせる。
 - App Router の Server Component / Client Component 境界を崩さない。ブラウザ API、Firebase クライアント SDK、状態管理、イベントハンドラを使うコンポーネントには `use client` を付ける。
 - 認証が必要な画面や API では、既存の SSR セッション確認と middleware の方針に合わせる。

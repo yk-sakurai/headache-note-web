@@ -26,6 +26,8 @@
 *.pem
 /.cursor/
 /requirements/
+/plans/
+/.review-bridge/
 
 # debug
 npm-debug.log*

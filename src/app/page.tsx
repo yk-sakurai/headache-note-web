@@ -65,7 +65,7 @@ export default function Home() {
 
             <div className="relative z-10 flex flex-col gap-3 pt-4 sm:flex-row sm:items-center md:pt-0">
               <a
-                href="/login?redirect=/pricing"
+                href="/signup"
                 className="inline-flex min-h-12 items-center justify-center rounded-lg bg-[#00A67E] px-7 text-base font-semibold text-white shadow-[0_8px_20px_rgba(0,166,126,0.18)] transition hover:bg-[#008F6D] focus:outline-none focus:ring-2 focus:ring-[#00A67E] focus:ring-offset-2"
               >
                 ユーザー登録

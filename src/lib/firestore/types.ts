@@ -8,6 +8,11 @@ export interface User {
   admin?: boolean;
   stripeCustomerId?: string;
   lastLoginAt?: Timestamp | AdminTimestamp;
+  lastUsedAt?: Timestamp | AdminTimestamp;
+  isDeleted?: boolean;
+  deletedAt?: Timestamp | AdminTimestamp;
+  totalActiveSessionCount?: number;
+  totalActiveDaysCount?: number;
 }
 
 // Subscription collection: subscriptions/{uid}
@@ -25,12 +30,78 @@ export interface Subscription {
   status: SubscriptionStatus;
   plan: SubscriptionPlan;
   priceId: string;
+  platform?: string;
   currentPeriodEnd: Timestamp | AdminTimestamp;
   currentPeriodStart: Timestamp | AdminTimestamp;
   trialEnd?: Timestamp | AdminTimestamp;
   cancelAtPeriodEnd: boolean;
   canceledAt?: Timestamp | AdminTimestamp;
   updatedAt: Timestamp | AdminTimestamp;
+  firstSubscribedAt?: Timestamp | AdminTimestamp;
+  trialStartedAt?: Timestamp | AdminTimestamp;
+}
+
+// UserAppVersion collection: user_app_versions/{versionId}
+export interface UserAppVersion {
+  userId: string;
+  currentVersion: string;
+  platform: string;
+  osVersion: string;
+  firstSeenVersion: string;
+  firstSeenAt: Timestamp | AdminTimestamp;
+  lastSeenAt: Timestamp | AdminTimestamp;
+}
+
+export interface AiReportTokenUsageAverage {
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+}
+
+export interface AiReportRequestsSnapshot {
+  totalCount: number;
+  lastRequestedAt?: Timestamp | AdminTimestamp;
+  monthlyCounts: Record<string, number>;
+  successCount: number;
+  failureCount: number;
+  countBySource: Record<string, number>;
+}
+
+export interface AiReportsSnapshot {
+  totalCount: number;
+  countByModel: Record<string, number>;
+  countBySource: Record<string, number>;
+  averageTokenUsage?: AiReportTokenUsageAverage;
+}
+
+export interface DeletedUserSnapshot {
+  uid: string;
+  registeredAt?: Timestamp | AdminTimestamp;
+  deletedAt: Timestamp | AdminTimestamp;
+  totalActiveSessionCount: number;
+  totalActiveDaysCount: number;
+  lastUsedAt?: Timestamp | AdminTimestamp;
+  averageWeeklyActiveDays: number;
+  headacheLogTotalCount: number;
+  headacheLogActiveDays: number;
+  subscriptionPlan?: string;
+  subscriptionStatus?: string;
+  subscriptionPlatform?: string;
+  subscriptionStartedAt?: Timestamp | AdminTimestamp;
+  subscriptionEndedAt?: Timestamp | AdminTimestamp;
+  trialStartedAt?: Timestamp | AdminTimestamp;
+  trialEndedAt?: Timestamp | AdminTimestamp;
+  aiReportRequests?: AiReportRequestsSnapshot;
+  aiReports?: AiReportsSnapshot;
+  inputSetTotalCount: number;
+  usageTrackingSummary?: Record<string, unknown>;
+  headacheAlertAccuracy?: {
+    headacheRate?: number;
+    headacheDays?: number;
+    totalDays?: number;
+  };
+  devicePlatform?: string;
+  appVersion?: string;
 }
 
 // Invoice subcollection: invoices/{uid}/{invoiceId}
