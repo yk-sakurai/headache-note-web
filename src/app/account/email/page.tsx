@@ -28,7 +28,7 @@ function mapAccountChangeErrorToMessage(code: string): string {
     case "auth/requires-recent-login":
       return "安全のため、もう一度ログインしてからお試しください。";
     case "auth/too-many-requests":
-      return "リクエストが多すぎます。しばらくしてからお試しください。";
+      return "エラーが発生しました。しばらくしてからもう一度お試しください。";
     case "auth/network-request-failed":
       return "ネットワークエラーが発生しました。接続をご確認ください。";
     default:

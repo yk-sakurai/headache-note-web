@@ -36,10 +36,9 @@ export default function PasswordResetPage() {
       setView("sent");
     } catch (error: unknown) {
       const code = getAuthErrorCode(error);
-      if (
-        code === "auth/too-many-requests" ||
-        code === "auth/network-request-failed"
-      ) {
+      if (code === "auth/too-many-requests") {
+        setFormAlert("エラーが発生しました。しばらくしてからもう一度お試しください。");
+      } else if (code === "auth/network-request-failed") {
         setFormAlert("送信できませんでした。時間をおいて再度お試しください。");
       } else {
         setView("sent");

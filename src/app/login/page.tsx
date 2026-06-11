@@ -15,7 +15,7 @@ function mapAuthErrorToMessage(code: string): string {
     case "auth/user-disabled":
       return "このアカウントは無効化されています";
     case "auth/too-many-requests":
-      return "リクエストが多すぎます。しばらくしてからお試しください";
+      return "エラーが発生しました。しばらくしてからもう一度お試しください。";
     case "auth/network-request-failed":
       return "ネットワーク エラーが発生しました。接続をご確認ください";
     default:

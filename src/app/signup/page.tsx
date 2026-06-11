@@ -21,7 +21,7 @@ function mapSignupErrorToMessage(code: string): string {
     case "auth/invalid-email":
       return "メールアドレスの形式が正しくありません。";
     case "auth/too-many-requests":
-      return "リクエストが多すぎます。しばらくしてからお試しください。";
+      return "エラーが発生しました。しばらくしてからもう一度お試しください。";
     case "auth/network-request-failed":
       return "ネットワークエラーが発生しました。接続をご確認ください。";
     case "auth/weak-password":
