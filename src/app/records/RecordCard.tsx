@@ -88,48 +88,46 @@ export default function RecordCard({ log }: { log: SerializableHeadacheLog }) {
   const note = log.note?.trim();
 
   return (
-    <Link
-      href={`/home/log/${log.id}/edit`}
-      className="block rounded-lg border border-[color:var(--brand-mint-border)] bg-[color:var(--surface)] px-5 py-4 text-[color:var(--text-primary)] shadow-[0_10px_30px_rgb(23_33_29_/_0.04)] calm-transition hover:border-[color:var(--brand-primary)] hover:shadow-[0_12px_34px_rgb(23_33_29_/_0.08)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--brand-mint-bg)]"
-    >
-      <article className="space-y-4">
-        <div className="flex flex-col gap-3 border-b border-[color:var(--border-subtle)] pb-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="text-xl font-semibold text-[color:var(--text-primary)]">
-              {formatDateLabel(log.timing)}
-            </span>
-            {typeof log.intensity === "number" && (
-              <span className="rounded-full border border-orange-200 bg-orange-50 px-5 py-1 text-sm font-semibold text-orange-700">
-                強さ {log.intensity}
-              </span>
-            )}
-            {durationLabel && (
-              <span className="rounded border border-[color:var(--border)] bg-[color:var(--surface-muted)] px-5 py-1 text-sm font-medium text-[color:var(--text-secondary)]">
-                継続時間 {durationLabel}
-              </span>
-            )}
-          </div>
-          <span className="text-sm font-medium text-[color:var(--brand-primary-active)]">
-            記録を開く
+    <article className="space-y-4 rounded-lg border border-[color:var(--brand-mint-border)] bg-[color:var(--surface)] px-5 py-4 text-[color:var(--text-primary)] shadow-[0_10px_30px_rgb(23_33_29_/_0.04)]">
+      <div className="flex flex-col gap-3 border-b border-[color:var(--border-subtle)] pb-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-xl font-semibold text-[color:var(--text-primary)]">
+            {formatDateLabel(log.timing)}
           </span>
-        </div>
-
-        <div className="grid gap-x-8 gap-y-2 text-sm leading-6 md:grid-cols-2">
-          <InlineInfo label="痛みの場所" values={locations} />
-          <InlineInfo label="痛み方" values={types} />
-          <InlineInfo label="トリガー" values={triggers} />
-          <InlineInfo label="服薬" values={medications} />
-          <InlineInfo label="対処" values={actions} />
-          {note && (
-            <div className="min-w-0 md:col-span-2">
-              <span className="font-medium text-[color:var(--text-primary)]">
-                メモ:{" "}
-              </span>
-              <span className="text-[color:var(--text-secondary)]">{note}</span>
-            </div>
+          {typeof log.intensity === "number" && (
+            <span className="rounded-full border border-orange-200 bg-orange-50 px-5 py-1 text-sm font-semibold text-orange-700">
+              強さ {log.intensity}
+            </span>
+          )}
+          {durationLabel && (
+            <span className="rounded border border-[color:var(--border)] bg-[color:var(--surface-muted)] px-5 py-1 text-sm font-medium text-[color:var(--text-secondary)]">
+              継続時間 {durationLabel}
+            </span>
           )}
         </div>
-      </article>
-    </Link>
+        <Link
+          href={`/home/log/${log.id}/edit`}
+          aria-label={`${formatDateLabel(log.timing)}の記録を編集`}
+          className="inline-flex w-fit items-center gap-1 rounded px-2 py-1 text-sm font-medium text-[color:var(--brand-primary-active)] underline-offset-4 calm-transition hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--surface)]"
+        >
+          <span aria-hidden="true">✏️</span>
+          <span>編集</span>
+        </Link>
+      </div>
+
+      <div className="grid gap-x-8 gap-y-2 text-sm leading-6 md:grid-cols-2">
+        <InlineInfo label="痛みの場所" values={locations} />
+        <InlineInfo label="痛み方" values={types} />
+        <InlineInfo label="トリガー" values={triggers} />
+        <InlineInfo label="服薬" values={medications} />
+        <InlineInfo label="対処" values={actions} />
+        {note && (
+          <div className="min-w-0 md:col-span-2">
+            <span className="font-medium text-[color:var(--text-primary)]">メモ: </span>
+            <span className="text-[color:var(--text-secondary)]">{note}</span>
+          </div>
+        )}
+      </div>
+    </article>
   );
 }

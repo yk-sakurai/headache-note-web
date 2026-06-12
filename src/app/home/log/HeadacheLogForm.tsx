@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Button from "@/components/Button";
 import { sanitizeStringList } from "@/lib/firestore/repositories/sanitize";
+import { formatDateTimeLocal } from "./datetime";
 
 const MINUTES_IN_HOUR = 60;
 const MINUTES_IN_DAY = MINUTES_IN_HOUR * 24;
@@ -21,10 +22,6 @@ const formatDateInput = (date: Date) => {
 
 const formatTimeInput = (date: Date) => {
   return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
-};
-
-export const formatDateTimeLocal = (date: Date) => {
-  return `${formatDateInput(date)}T${formatTimeInput(date)}`;
 };
 
 const splitDateTimeLocal = (value?: string) => {

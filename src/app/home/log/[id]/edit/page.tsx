@@ -11,22 +11,14 @@ import {
 } from "@/lib/firestore/repositories/client";
 import { sanitizeStringList } from "@/lib/firestore/repositories/sanitize";
 import type { HeadacheLog } from "@/lib/firestore/types";
-import { Timestamp, deleteField } from "firebase/firestore";
+import { deleteField, type Timestamp } from "firebase/firestore";
 import HeadacheLogForm, { type HeadacheLogFormData } from "../../HeadacheLogForm";
+import { toLocalDateTimeInput } from "../../datetime";
 import {
   deleteHeadacheFreeConflicts,
   findConflictingHeadacheFreeLogs,
 } from "../../headacheFreeConflict";
 import { buildActionPayload, buildMedicationPayload, toTimestamp } from "../../payload";
-
-function toLocalDateTimeInput(ts?: Timestamp): string {
-  if (!ts) return "";
-  const date = ts.toDate();
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
-    date.getHours()
-  )}:${pad(date.getMinutes())}`;
-}
 
 export default function EditHeadacheLogPage() {
   const params = useParams<{ id: string }>();
