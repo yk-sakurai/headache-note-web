@@ -1,142 +1,64 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import HeadacheLogForm, { HeadacheLogFormData } from "../../HeadacheLogForm";
-import { ClientHeadacheLogRepository, type HeadacheLogUpdateData } from "@/lib/firestore/repositories/client";
-import { HeadacheLog } from "@/lib/firestore/types";
-import { Timestamp, deleteField } from "firebase/firestore";
+import ConfirmDialog from "@/components/ConfirmDialog";
+import { getCurrentUser } from "@/lib/firebase/auth.client";
+import {
+  ClientHeadacheLogRepository,
+  type HeadacheLogUpdateData,
+} from "@/lib/firestore/repositories/client";
 import { sanitizeStringList } from "@/lib/firestore/repositories/sanitize";
+import type { HeadacheLog } from "@/lib/firestore/types";
+import { Timestamp, deleteField } from "firebase/firestore";
+import HeadacheLogForm, { type HeadacheLogFormData } from "../../HeadacheLogForm";
+import {
+  deleteHeadacheFreeConflicts,
+  findConflictingHeadacheFreeLogs,
+} from "../../headacheFreeConflict";
+import { buildActionPayload, buildMedicationPayload, toTimestamp } from "../../payload";
 
 function toLocalDateTimeInput(ts?: Timestamp): string {
   if (!ts) return "";
-  const d = ts.toDate();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const yyyy = d.getFullYear();
-  const mm = pad(d.getMonth() + 1);
-  const dd = pad(d.getDate());
-  const hh = pad(d.getHours());
-  const mi = pad(d.getMinutes());
-  return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
+  const date = ts.toDate();
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
+    date.getHours()
+  )}:${pad(date.getMinutes())}`;
 }
-
-const toTimestamp = (value: string | undefined) => {
-  if (!value) return undefined;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return undefined;
-  return Timestamp.fromDate(date);
-};
-
-const buildMedicationPayload = (
-  medications: HeadacheLogFormData["medications"] | undefined
-) => {
-  const result: Array<{
-    name: string;
-    dosage: number;
-    unit: string;
-    takenAt: Timestamp;
-    effectiveness?: number;
-  }> = [];
-
-  if (!medications) {
-    return result;
-  }
-
-  for (const medication of medications) {
-    const name = (medication.name ?? "").trim();
-    const unit = (medication.unit ?? "").trim();
-    const takenAt = toTimestamp(medication.takenAt);
-    const hasAnyInput =
-      name.length > 0 ||
-      unit.length > 0 ||
-      (typeof medication.dosage === "number" &&
-        Number.isFinite(medication.dosage) &&
-        medication.dosage !== 0) ||
-      medication.effectiveness !== undefined ||
-      Boolean(takenAt);
-
-    if (!hasAnyInput) {
-      continue;
-    }
-
-    if (!takenAt || name.length === 0) {
-      continue;
-    }
-
-    result.push({
-      name,
-      dosage:
-        typeof medication.dosage === "number" &&
-        Number.isFinite(medication.dosage)
-          ? medication.dosage
-          : 0,
-      unit,
-      takenAt,
-      ...(medication.effectiveness !== undefined
-        ? { effectiveness: medication.effectiveness }
-        : {}),
-    });
-  }
-
-  return result;
-};
-
-const buildActionPayload = (
-  actions: HeadacheLogFormData["actions"] | undefined
-) => {
-  const result: Array<{
-    text: string;
-    takenAt: Timestamp;
-    effectiveness?: number;
-  }> = [];
-
-  if (!actions) {
-    return result;
-  }
-
-  for (const action of actions) {
-    const text = (action.text ?? "").trim();
-    const takenAt = toTimestamp(action.takenAt);
-    const hasAnyInput =
-      text.length > 0 ||
-      action.effectiveness !== undefined ||
-      Boolean(takenAt);
-
-    if (!hasAnyInput) {
-      continue;
-    }
-
-    if (!takenAt || text.length === 0) {
-      continue;
-    }
-
-    result.push({
-      text,
-      takenAt,
-      ...(action.effectiveness !== undefined
-        ? { effectiveness: action.effectiveness }
-        : {}),
-    });
-  }
-
-  return result;
-};
 
 export default function EditHeadacheLogPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const logId = params?.id;
   const [log, setLog] = useState<HeadacheLog | null>(null);
   const [loading, setLoading] = useState(true);
-  const logId = params?.id;
+  const [pendingData, setPendingData] = useState<HeadacheLogFormData | null>(null);
+  const [conflicts, setConflicts] = useState<HeadacheLog[]>([]);
+  const [conflictDialogOpen, setConflictDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [pageError, setPageError] = useState<string | null>(null);
+  const [operationError, setOperationError] = useState<string | null>(null);
+  const [confirmingConflict, setConfirmingConflict] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     let mounted = true;
     (async () => {
       if (!logId) return;
-      const res = await ClientHeadacheLogRepository.getLog(logId);
-      if (mounted) {
-        setLog(res);
-        setLoading(false);
+      try {
+        const result = await ClientHeadacheLogRepository.getLog(logId);
+        if (mounted) {
+          setLog(result);
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error("頭痛記録取得エラー:", error);
+        if (mounted) {
+          setPageError("記録を読み込めませんでした。");
+          setLoading(false);
+        }
       }
     })();
     return () => {
@@ -155,35 +77,38 @@ export default function EditHeadacheLogPage() {
       triggers: log.triggers,
       associatedSymptoms: log.associatedSymptoms,
       note: log.note ?? undefined,
-      medications: log.medications?.map((m) => ({
-        name: m.name,
-        dosage: m.dosage,
-        unit: m.unit,
-        takenAt: toLocalDateTimeInput(m.takenAt as Timestamp),
-        effectiveness: m.effectiveness,
+      medications: log.medications?.map((medication) => ({
+        name: medication.name,
+        dosage: medication.dosage,
+        unit: medication.unit,
+        takenAt: toLocalDateTimeInput(medication.takenAt as Timestamp),
+        effectiveness: medication.effectiveness,
       })),
-      actions: log.actions?.map((a) => ({
-        text: a.text,
-        takenAt: toLocalDateTimeInput(a.takenAt as Timestamp),
-        effectiveness: a.effectiveness,
+      actions: log.actions?.map((action) => ({
+        text: action.text,
+        takenAt: toLocalDateTimeInput(action.takenAt as Timestamp),
+        effectiveness: action.effectiveness,
       })),
     };
   }, [log]);
 
-  const handleSubmit = async (data: HeadacheLogFormData) => {
+  const saveLog = async (data: HeadacheLogFormData) => {
     if (!logId) return;
+
+    const timing = toTimestamp(data.timing);
+    if (!timing) {
+      throw new Error("発生日時が正しくありません");
+    }
+
     const sanitizedLocations = sanitizeStringList(data.locations);
     const sanitizedTypes = sanitizeStringList(data.types);
     const sanitizedTriggers = sanitizeStringList(data.triggers);
     const sanitizedAssociatedSymptoms = sanitizeStringList(data.associatedSymptoms);
     const medicationsPayload = buildMedicationPayload(data.medications);
     const actionsPayload = buildActionPayload(data.actions);
+    const updates: HeadacheLogUpdateData = { timing };
 
-    const updates: HeadacheLogUpdateData = {
-      timing: Timestamp.fromDate(new Date(data.timing)),
-    };
-
-    const setStringListField = (
+    const setListField = (
       key: "locations" | "types" | "triggers" | "associatedSymptoms",
       values: string[],
       previous?: string[]
@@ -195,14 +120,10 @@ export default function EditHeadacheLogPage() {
       }
     };
 
-    setStringListField("locations", sanitizedLocations, log?.locations);
-    setStringListField("types", sanitizedTypes, log?.types);
-    setStringListField("triggers", sanitizedTriggers, log?.triggers);
-    setStringListField(
-      "associatedSymptoms",
-      sanitizedAssociatedSymptoms,
-      log?.associatedSymptoms
-    );
+    setListField("locations", sanitizedLocations, log?.locations);
+    setListField("types", sanitizedTypes, log?.types);
+    setListField("triggers", sanitizedTriggers, log?.triggers);
+    setListField("associatedSymptoms", sanitizedAssociatedSymptoms, log?.associatedSymptoms);
 
     if (medicationsPayload.length > 0) {
       updates.medications = medicationsPayload;
@@ -236,22 +157,131 @@ export default function EditHeadacheLogPage() {
     }
 
     await ClientHeadacheLogRepository.updateLog(logId, updates);
+  };
 
-    router.push("/home");
+  const handleSubmit = async (data: HeadacheLogFormData) => {
+    if (confirmingConflict || deleting) return;
+    setOperationError(null);
+    const user = getCurrentUser();
+    if (!user) {
+      throw new Error("ログインが必要です");
+    }
+
+    const nextConflicts = await findConflictingHeadacheFreeLogs({
+      uid: user.uid,
+      timing: data.timing,
+      duration: data.duration,
+      excludeLogId: logId,
+    });
+
+    if (nextConflicts.length > 0) {
+      setPendingData(data);
+      setConflicts(nextConflicts);
+      setConflictDialogOpen(true);
+      return;
+    }
+
+    await saveLog(data);
+    router.push("/records?notice=updated");
+  };
+
+  const handleConfirmConflict = async () => {
+    if (!pendingData || confirmingConflict) return;
+    setConflictDialogOpen(false);
+    setOperationError(null);
+    setConfirmingConflict(true);
+    try {
+      await deleteHeadacheFreeConflicts(conflicts);
+      await saveLog(pendingData);
+      router.push("/records?notice=updated");
+    } catch (error) {
+      console.error("頭痛なし記録の削除または頭痛記録保存エラー:", error);
+      setOperationError(
+        "更新できませんでした。頭痛なし記録の状態を一覧で確認して、もう一度お試しください。"
+      );
+    } finally {
+      setConfirmingConflict(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!logId || deleting) return;
+    setOperationError(null);
+    setDeleting(true);
+    try {
+      await ClientHeadacheLogRepository.deleteLog(logId);
+      router.push("/records?notice=deleted");
+    } catch (error) {
+      console.error("頭痛記録削除エラー:", error);
+      setDeleteDialogOpen(false);
+      setOperationError("削除できませんでした。時間をおいてもう一度お試しください。");
+    } finally {
+      setDeleting(false);
+    }
   };
 
   if (loading) {
-    return <div className="px-4 py-8">読み込み中...</div>;
+    return (
+      <main className="min-h-screen bg-[color:var(--brand-mint-bg)] px-4 py-8 text-[color:var(--text-primary)]">
+        読み込み中...
+      </main>
+    );
   }
 
-  if (!log) {
-    return <div className="px-4 py-8">記録が見つかりませんでした。</div>;
+  if (pageError || !log || !initial) {
+    return (
+      <main className="min-h-screen bg-[color:var(--brand-mint-bg)] px-4 py-8 text-[color:var(--text-primary)]">
+        {pageError ?? "記録が見つかりませんでした。"}
+      </main>
+    );
   }
 
   return (
-    <div className="max-w-screen-md mx-auto px-4 py-8">
-      <h1 className="text-2xl font-semibold mb-6">頭痛記録の編集</h1>
-      <HeadacheLogForm initial={initial} onSubmit={handleSubmit} submitLabel="更新" />
-    </div>
+    <main className="min-h-screen bg-[color:var(--brand-mint-bg)] px-4 py-8 text-[color:var(--text-primary)] sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-6xl space-y-6">
+        <div className="space-y-3">
+          <Link
+            href="/records"
+            className="inline-flex text-sm font-medium text-[color:var(--brand-primary-active)] underline-offset-4 hover:underline"
+          >
+            ← 記録一覧に戻る
+          </Link>
+          <h1 className="text-3xl font-semibold tracking-normal">頭痛記録編集</h1>
+        </div>
+        {operationError && (
+          <p className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {operationError}
+          </p>
+        )}
+        <HeadacheLogForm
+          initial={initial}
+          onSubmit={handleSubmit}
+          onDelete={() => setDeleteDialogOpen(true)}
+          submitLabel="決定"
+        />
+      </div>
+      <ConfirmDialog
+        isOpen={conflictDialogOpen}
+        title="頭痛なしの記録があります"
+        message="入力した日は頭痛なしの記録があります。削除して登録しますか？"
+        confirmText="削除して登録"
+        cancelText="キャンセル"
+        onConfirm={handleConfirmConflict}
+        onCancel={() => {
+          setConflictDialogOpen(false);
+          setPendingData(null);
+          setConflicts([]);
+        }}
+      />
+      <ConfirmDialog
+        isOpen={deleteDialogOpen}
+        title="頭痛記録の削除"
+        message="頭痛記録を削除します。よろしいですか？"
+        confirmText="削除"
+        cancelText="キャンセル"
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteDialogOpen(false)}
+      />
+    </main>
   );
 }

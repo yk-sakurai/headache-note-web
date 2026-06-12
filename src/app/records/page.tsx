@@ -1,11 +1,13 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 import { SESSION_COOKIE_NAME } from "@/lib/constants";
 import { adminAuth } from "@/lib/firebase/admin";
 import { HeadacheLogRepository } from "@/lib/firestore/repositories/server";
 import { toSerializableHeadacheLog } from "@/lib/firestore/serializeHeadacheLog";
 import { getDefaultTokyoDateRange } from "./dateRange";
 import RecordListClient from "./RecordListClient";
+import RecordsNotice from "./RecordsNotice";
 
 export default async function RecordsPage() {
   const cookieStore = await cookies();
@@ -36,6 +38,9 @@ export default async function RecordsPage() {
 
   return (
     <main className="min-h-screen bg-[color:var(--brand-mint-bg)] px-4 py-8 text-[color:var(--text-primary)] sm:px-6 lg:px-8">
+      <Suspense fallback={null}>
+        <RecordsNotice />
+      </Suspense>
       <RecordListClient
         uid={uid}
         initialLogs={initialLogs}
