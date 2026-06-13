@@ -1039,13 +1039,16 @@ interface HeadacheLog {
 
 interface HeadacheMedication {
   name: string;
-  dosage?: string;
-  timing?: Timestamp;
+  takenAt: Timestamp;
+  dosage: number;
+  unit: string;
+  effectiveness?: number;
 }
 
 interface HeadacheAction {
-  name: string;
-  timing?: Timestamp;
+  text: string;
+  takenAt: Timestamp;
+  effectiveness?: number;
 }
 ```
 
@@ -1060,8 +1063,8 @@ interface HeadacheAction {
 | `locations` | `string[]?` | - | 痛みの場所。例: `["前頭部", "こめかみ"]` |
 | `types` | `string[]?` | - | 頭痛のタイプ。例: `["ズキズキ", "締め付けられる"]` |
 | `triggers` | `string[]?` | - | 頭痛のトリガー。例: `["ストレス", "睡眠不足"]` |
-| `medications` | `HeadacheMedication[]?` | - | 服用した薬。 |
-| `actions` | `HeadacheAction[]?` | - | 実施した対処行動。例: `[{ "name": "休憩" }]` |
+| `medications` | `HeadacheMedication[]?` | - | 服用した薬。服薬を記録する場合、`dosage` はモバイル互換のため必須の数値として保存する。`effectiveness` は 0〜10。 |
+| `actions` | `HeadacheAction[]?` | - | 実施した対処行動。例: `[{ "text": "休憩", "takenAt": Timestamp }]`。`effectiveness` は 0〜10。 |
 | `associatedSymptoms` | `string[]?` | - | 随伴症状。例: `["吐き気", "めまい"]` |
 | `note` | `string?` | - | メモ。自由記述。 |
 | `isHeadacheFree` | `boolean?` | - | 頭痛がない日の記録かどうか。`true` の場合、頭痛なしの日として記録。 |
@@ -2509,8 +2512,10 @@ const newLog = {
   medications: [
     {
       name: "ロキソニン",
-      dosage: "1錠",
-      timing: Timestamp.now(),
+      dosage: 1,
+      unit: "錠",
+      takenAt: Timestamp.now(),
+      effectiveness: 7,
     }
   ],
   note: "仕事のストレスで頭痛が発生",
