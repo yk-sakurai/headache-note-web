@@ -13,6 +13,11 @@ export const SESSION_COOKIE_NAME = "__session" as const;
 export const APP_VERSION = packageJson.version;
 
 /**
+ * お問い合わせ先メールアドレス
+ */
+export const SUPPORT_EMAIL = "support@ystudiox.com" as const;
+
+/**
  * セッションCookieの有効期限（ミリ秒）
  */
 export const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000;

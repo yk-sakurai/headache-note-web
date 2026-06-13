@@ -283,12 +283,14 @@ export default function SignupPage() {
               checked={agreeTerms}
               onChange={setAgreeTerms}
               agreementName="利用規約"
+              agreementHref="/terms"
             />
             <AgreementCheckbox
               id="agree-privacy"
               checked={agreePrivacy}
               onChange={setAgreePrivacy}
               agreementName="プライバシーポリシー"
+              agreementHref="/privacy"
             />
           </div>
 
@@ -366,11 +368,13 @@ function AgreementCheckbox({
   checked,
   onChange,
   agreementName,
+  agreementHref,
 }: {
   id: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
   agreementName: string;
+  agreementHref: string;
 }) {
   return (
     <div className="flex items-center gap-3 text-sm text-[color:var(--text-primary)]">
@@ -379,15 +383,18 @@ function AgreementCheckbox({
         type="checkbox"
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
+        aria-label={`${agreementName}に同意する`}
         className="h-5 w-5 shrink-0 rounded border-[color:var(--border)] text-[color:var(--brand-primary)] accent-[color:var(--brand-primary)]"
       />
-      <label htmlFor={id}>
-        {/* TODO: 正式なページを用意したら /terms と /privacy へのリンクに差し替える。 */}
-        <span className="font-semibold text-[color:var(--brand-primary-active)]">
+      <p>
+        <Link
+          href={agreementHref}
+          className="font-semibold text-[color:var(--brand-primary-active)] underline underline-offset-4 calm-transition hover:text-[color:var(--brand-primary-hover)]"
+        >
           {agreementName}
-        </span>
+        </Link>
         に同意します
-      </label>
+      </p>
     </div>
   );
 }
