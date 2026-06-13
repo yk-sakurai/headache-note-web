@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE_NAME } from "@/lib/constants";
 
 function isProtectedPath(pathname: string): boolean {
-  console.log("[middleware] isProtectedPath:", pathname);
   if (pathname === "/home" || pathname.startsWith("/home/")) return true;
+  if (pathname === "/records" || pathname.startsWith("/records/")) return true;
   return false;
 }
 
@@ -38,6 +38,12 @@ export async function middleware(req: NextRequest) {
     return res;
   }
 
+  if (pathname === "/home") {
+    const url = req.nextUrl.clone();
+    url.pathname = "/records";
+    return NextResponse.redirect(url);
+  }
+
   if (!isProtectedPath(pathname)) {
     return NextResponse.next();
   }
@@ -65,5 +71,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/home/:path*", "/pricing"],
+  matcher: ["/home", "/home/:path*", "/records", "/records/:path*", "/pricing"],
 };

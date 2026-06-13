@@ -180,14 +180,17 @@ export interface Device {
 export interface HeadacheMedication {
   name: string;
   takenAt: Timestamp | AdminTimestamp;
+  // Mobile-compatible required dosage value.
   dosage: number;
   unit: string;
+  // Mobile-compatible effectiveness score. 0 is a valid recorded value.
   effectiveness?: number;
 }
 
 export interface HeadacheAction {
   text: string;
   takenAt: Timestamp | AdminTimestamp;
+  // Mobile-compatible effectiveness score. 0 is a valid recorded value.
   effectiveness?: number;
 }
 
