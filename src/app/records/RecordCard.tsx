@@ -73,7 +73,15 @@ const InlineInfo = ({
   );
 };
 
-export default function RecordCard({ log }: { log: SerializableHeadacheLog }) {
+export default function RecordCard({
+  log,
+  deleting,
+  onDelete,
+}: {
+  log: SerializableHeadacheLog;
+  deleting: boolean;
+  onDelete: () => void;
+}) {
   const durationLabel = formatDurationLabel(log.duration);
   const locations = sanitizeStringList(log.locations);
   const types = sanitizeStringList(log.types);
@@ -86,13 +94,15 @@ export default function RecordCard({ log }: { log: SerializableHeadacheLog }) {
       ?.map((action) => action.text)
       .filter((value) => value.trim().length > 0) ?? [];
   const note = log.note?.trim();
+  const dateLabel = formatDateLabel(log.timing);
+  const editLabel = `${dateLabel}の記録を編集`;
 
   return (
     <article className="space-y-4 rounded-lg border border-[color:var(--brand-mint-border)] bg-[color:var(--surface)] px-5 py-4 text-[color:var(--text-primary)] shadow-[0_10px_30px_rgb(23_33_29_/_0.04)]">
       <div className="flex flex-col gap-3 border-b border-[color:var(--border-subtle)] pb-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-xl font-semibold text-[color:var(--text-primary)]">
-            {formatDateLabel(log.timing)}
+            {dateLabel}
           </span>
           {typeof log.intensity === "number" && (
             <span className="rounded-full border border-orange-200 bg-orange-50 px-5 py-1 text-sm font-semibold text-orange-700">
@@ -105,14 +115,38 @@ export default function RecordCard({ log }: { log: SerializableHeadacheLog }) {
             </span>
           )}
         </div>
-        <Link
-          href={`/home/log/${log.id}/edit`}
-          aria-label={`${formatDateLabel(log.timing)}の記録を編集`}
-          className="inline-flex w-fit items-center gap-1 rounded px-2 py-1 text-sm font-medium text-[color:var(--brand-primary-active)] underline-offset-4 calm-transition hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--surface)]"
-        >
-          <span aria-hidden="true">✏️</span>
-          <span>編集</span>
-        </Link>
+        <div className="inline-flex w-fit items-center gap-2 self-start lg:self-auto">
+          {deleting ? (
+            <span
+              aria-disabled="true"
+              aria-label={editLabel}
+              className="inline-flex items-center gap-1 rounded px-2 py-1 text-sm font-medium text-[color:var(--text-secondary)] opacity-50"
+            >
+              <span aria-hidden="true">✏️</span>
+              <span>編集</span>
+            </span>
+          ) : (
+            <Link
+              href={`/home/log/${log.id}/edit`}
+              aria-label={editLabel}
+              className="inline-flex items-center gap-1 rounded px-2 py-1 text-sm font-medium text-[color:var(--brand-primary-active)] underline-offset-4 calm-transition hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--surface)]"
+            >
+              <span aria-hidden="true">✏️</span>
+              <span>編集</span>
+            </Link>
+          )}
+          <span className="h-5 border-l border-[color:var(--border-subtle)]" aria-hidden="true" />
+          <button
+            type="button"
+            aria-label={`${dateLabel}の記録を削除`}
+            disabled={deleting}
+            onClick={onDelete}
+            className="inline-flex items-center gap-1 rounded px-2 py-1 text-sm font-medium text-red-600 underline-offset-4 calm-transition hover:text-red-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-red-200 focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--surface)] disabled:pointer-events-none disabled:opacity-50"
+          >
+            <span aria-hidden="true">🗑</span>
+            <span>{deleting ? "削除中..." : "削除"}</span>
+          </button>
+        </div>
       </div>
 
       <div className="grid gap-x-8 gap-y-2 text-sm leading-6 md:grid-cols-2">

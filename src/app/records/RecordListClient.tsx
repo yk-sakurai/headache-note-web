@@ -1,7 +1,9 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useCallback, useMemo, useRef, useState } from "react";
 import Button from "@/components/Button";
+import ConfirmDialog from "@/components/ConfirmDialog";
+import Toast from "@/components/Toast";
 import { ClientHeadacheLogRepository } from "@/lib/firestore/repositories/client";
 import {
   toSerializableHeadacheLog,
@@ -43,6 +45,12 @@ export default function RecordListClient({
     useState<DateRangeInput>(initialRange);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] =
+    useState<SerializableHeadacheLog | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteToast, setDeleteToast] = useState<string | null>(null);
+  const deletingRef = useRef(false);
 
   const rangeValidation = useMemo(() => {
     const millis = toRangeMillis(range);
@@ -92,6 +100,49 @@ export default function RecordListClient({
     setRange(initialRange);
     await searchLogs(initialRange);
   };
+
+  const handleDeleteRequest = (log: SerializableHeadacheLog) => {
+    if (deletingId || deletingRef.current) {
+      return;
+    }
+    setDeleteError(null);
+    setDeleteTarget(log);
+  };
+
+  const handleDeleteCancel = () => {
+    if (deletingRef.current) {
+      return;
+    }
+    setDeleteTarget(null);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget || deletingRef.current) {
+      return;
+    }
+
+    const targetId = deleteTarget.id;
+    deletingRef.current = true;
+    setDeletingId(targetId);
+    setDeleteError(null);
+    setDeleteTarget(null);
+
+    try {
+      await ClientHeadacheLogRepository.deleteLog(targetId);
+      setLogs((current) => current.filter((log) => log.id !== targetId));
+      setDeleteToast("削除しました。");
+    } catch (deleteLogError) {
+      console.error("頭痛記録削除エラー:", deleteLogError);
+      setDeleteError("削除できませんでした。時間をおいてもう一度お試しください。");
+    } finally {
+      setDeletingId(null);
+      deletingRef.current = false;
+    }
+  };
+
+  const handleDeleteToastClose = useCallback(() => {
+    setDeleteToast(null);
+  }, []);
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
@@ -178,6 +229,8 @@ export default function RecordListClient({
         <p className="text-lg font-semibold">{logs.length} 件の記録</p>
       </div>
 
+      {deleteError && <p className="text-sm text-red-600">{deleteError}</p>}
+
       {logs.length === 0 ? (
         <section className="rounded-lg border border-[color:var(--brand-mint-border)] bg-[color:var(--surface)] px-5 py-10 text-center shadow-[0_10px_30px_rgb(23_33_29_/_0.05)]">
           <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">
@@ -190,10 +243,25 @@ export default function RecordListClient({
       ) : (
         <div className="space-y-3">
           {logs.map((log) => (
-            <RecordCard key={log.id} log={log} />
+            <RecordCard
+              key={log.id}
+              log={log}
+              deleting={deletingId === log.id}
+              onDelete={() => handleDeleteRequest(log)}
+            />
           ))}
         </div>
       )}
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        title="頭痛記録の削除"
+        message="頭痛記録を削除します。よろしいですか？"
+        confirmText="削除"
+        cancelText="キャンセル"
+        onConfirm={handleDeleteConfirm}
+        onCancel={handleDeleteCancel}
+      />
+      <Toast message={deleteToast} onClose={handleDeleteToastClose} />
     </div>
   );
 }

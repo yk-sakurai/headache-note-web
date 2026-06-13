@@ -327,7 +327,10 @@ function FormActionBar({
   onPinnedChange: (next: boolean) => void;
 }) {
   const controls = (
-    <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+    <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-center">
+      <Button type="submit" disabled={submitting} className="h-12 px-8 text-base">
+        {submitting ? "保存中..." : submitLabel}
+      </Button>
       {hasDelete && (
         <button
           type="button"
@@ -338,9 +341,6 @@ function FormActionBar({
           削除
         </button>
       )}
-      <Button type="submit" disabled={submitting} className="h-12 px-8 text-base">
-        {submitting ? "保存中..." : submitLabel}
-      </Button>
       <button
         type="button"
         disabled={submitting}
@@ -358,7 +358,7 @@ function FormActionBar({
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[color:var(--border-subtle)] bg-white/95 px-4 py-3 shadow-[0_-10px_30px_rgb(23_33_29_/_0.08)] backdrop-blur">
-      <div className="mx-auto flex max-w-6xl justify-end">{controls}</div>
+      <div className="mx-auto flex max-w-6xl justify-center">{controls}</div>
     </div>
   );
 }
