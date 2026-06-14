@@ -1,6 +1,23 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  rectSortingStrategy,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { useId, useMemo, useState } from "react";
 import Button from "@/components/Button";
 import { sanitizeStringList } from "@/lib/firestore/repositories/sanitize";
 import { formatDateTimeLocal } from "./datetime";
@@ -122,6 +139,69 @@ type ActionFormState = {
 type MedicationErrors = Partial<Record<"takenAt" | "name" | "dosage" | "unit", string>>;
 type ActionErrors = Partial<Record<"takenAt" | "text", string>>;
 
+const OPTIONAL_ITEMS = [
+  { key: "duration", title: "継続時間" },
+  { key: "location", title: "痛みの場所" },
+  { key: "type", title: "痛み方" },
+  { key: "trigger", title: "トリガー" },
+  { key: "associatedSymptoms", title: "併発症状" },
+  { key: "action", title: "対処" },
+  { key: "medication", title: "服薬" },
+  { key: "note", title: "メモ" },
+] as const;
+
+type OptionalItemKey = (typeof OPTIONAL_ITEMS)[number]["key"];
+
+const DEFAULT_OPTIONAL_ITEM_ORDER = OPTIONAL_ITEMS.map((item) => item.key);
+const OPTIONAL_ITEM_KEY_SET = new Set<string>(DEFAULT_OPTIONAL_ITEM_ORDER);
+const OPTIONAL_ITEM_TITLE_MAP = Object.fromEntries(
+  OPTIONAL_ITEMS.map((item) => [item.key, item.title])
+) as Record<OptionalItemKey, string>;
+
+const OPTIONAL_ITEM_KEY_ALIASES: Record<string, OptionalItemKey> = {
+  locations: "location",
+  types: "type",
+  triggers: "trigger",
+  actions: "action",
+  medications: "medication",
+};
+
+const normalizeOptionalItemKey = (key: string): OptionalItemKey | null => {
+  const normalized = OPTIONAL_ITEM_KEY_ALIASES[key] ?? key;
+  return OPTIONAL_ITEM_KEY_SET.has(normalized) ? (normalized as OptionalItemKey) : null;
+};
+
+const normalizeFormOrder = (formOrder?: string[]) => {
+  const result: OptionalItemKey[] = [];
+
+  for (const rawKey of formOrder ?? []) {
+    const key = normalizeOptionalItemKey(rawKey);
+    if (!key || result.includes(key)) continue;
+    result.push(key);
+  }
+
+  for (const key of DEFAULT_OPTIONAL_ITEM_ORDER) {
+    if (!result.includes(key)) {
+      result.push(key);
+    }
+  }
+
+  return result;
+};
+
+const normalizeVisibleItems = (visibleItems?: Record<string, boolean>) => {
+  const result: Partial<Record<OptionalItemKey, boolean>> = {};
+
+  for (const [rawKey, value] of Object.entries(visibleItems ?? {})) {
+    const key = normalizeOptionalItemKey(rawKey);
+    if (key) {
+      result[key] = Boolean(value);
+    }
+  }
+
+  return result;
+};
+
 export type HeadacheLogFormData = {
   timing: string;
   intensity?: number;
@@ -135,6 +215,12 @@ export type HeadacheLogFormData = {
   note?: string;
 };
 
+export type HeadacheLogPreferenceInput = {
+  formOrder?: string[];
+  visibleItems?: Record<string, boolean>;
+  durationInputType?: "endDatetime" | "duration";
+};
+
 const fieldCardClass =
   "rounded-lg border border-[color:var(--brand-mint-border)] bg-[color:var(--surface)] p-5 shadow-[0_10px_30px_rgb(23_33_29_/_0.04)]";
 const labelClass = "text-sm font-medium text-[color:var(--text-primary)]";
@@ -142,6 +228,53 @@ const inputClass =
   "h-11 w-full rounded border border-[color:var(--border)] bg-white px-3 text-base text-[color:var(--text-primary)] outline-none calm-transition placeholder:text-[color:var(--text-muted)] focus:border-[color:var(--brand-primary)] focus:ring-2 focus:ring-[color:var(--brand-primary-soft)]";
 const smallInputClass =
   "h-10 w-full rounded border border-[color:var(--border)] bg-white px-3 text-sm text-[color:var(--text-primary)] outline-none calm-transition placeholder:text-[color:var(--text-muted)] focus:border-[color:var(--brand-primary)] focus:ring-2 focus:ring-[color:var(--brand-primary-soft)]";
+
+const hasInitialValue = (
+  key: OptionalItemKey,
+  initial?: Partial<HeadacheLogFormData>
+) => {
+  switch (key) {
+    case "duration":
+      return initial?.duration !== undefined;
+    case "location":
+      return Boolean(initial?.locations?.length);
+    case "type":
+      return Boolean(initial?.types?.length);
+    case "trigger":
+      return Boolean(initial?.triggers?.length);
+    case "associatedSymptoms":
+      return Boolean(initial?.associatedSymptoms?.length);
+    case "action":
+      return Boolean(initial?.actions?.length);
+    case "medication":
+      return Boolean(initial?.medications?.length);
+    case "note":
+      return Boolean(initial?.note?.trim());
+  }
+};
+
+const buildInitialVisibilityMap = ({
+  initial,
+  initialPreference,
+  isNewLog,
+}: {
+  initial?: Partial<HeadacheLogFormData>;
+  initialPreference?: HeadacheLogPreferenceInput;
+  isNewLog: boolean;
+}) => {
+  if (isNewLog) {
+    const normalizedVisibleItems = normalizeVisibleItems(initialPreference?.visibleItems);
+    return DEFAULT_OPTIONAL_ITEM_ORDER.reduce<Record<OptionalItemKey, boolean>>((acc, key) => {
+      acc[key] = normalizedVisibleItems[key] ?? true;
+      return acc;
+    }, {} as Record<OptionalItemKey, boolean>);
+  }
+
+  return DEFAULT_OPTIONAL_ITEM_ORDER.reduce<Record<OptionalItemKey, boolean>>((acc, key) => {
+    acc[key] = hasInitialValue(key, initial);
+    return acc;
+  }, {} as Record<OptionalItemKey, boolean>);
+};
 
 function FieldCard({
   title,
@@ -164,6 +297,96 @@ function FieldCard({
       </div>
       <div className="space-y-4">{children}</div>
     </section>
+  );
+}
+
+function DragHandleIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 16 20"
+      className="h-5 w-4"
+      fill="currentColor"
+    >
+      <circle cx="5" cy="4" r="1.5" />
+      <circle cx="11" cy="4" r="1.5" />
+      <circle cx="5" cy="10" r="1.5" />
+      <circle cx="11" cy="10" r="1.5" />
+      <circle cx="5" cy="16" r="1.5" />
+      <circle cx="11" cy="16" r="1.5" />
+    </svg>
+  );
+}
+
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 20 20"
+      className={`h-5 w-5 calm-transition ${open ? "rotate-180" : ""}`}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="m5 8 5 5 5-5" />
+    </svg>
+  );
+}
+
+function SortableOptionalCard({
+  id,
+  title,
+  isOpen,
+  onToggle,
+  children,
+}: {
+  id: OptionalItemKey;
+  title: string;
+  isOpen: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+  });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 10 : undefined,
+    opacity: isDragging ? 0.96 : undefined,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className="min-w-0">
+      <section className={fieldCardClass}>
+        <div className="mb-4 flex items-center gap-2">
+          <button
+            type="button"
+            className="inline-flex h-9 w-9 shrink-0 cursor-grab touch-none items-center justify-center rounded text-[color:var(--text-muted)] calm-transition hover:bg-[color:var(--brand-primary-soft)] hover:text-[color:var(--brand-primary-active)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-primary)] active:cursor-grabbing"
+            aria-label={`${title}を並べ替え`}
+            {...attributes}
+            {...listeners}
+          >
+            <DragHandleIcon />
+          </button>
+          <h2 className="flex-1 text-base font-semibold text-[color:var(--text-primary)]">
+            {title}
+          </h2>
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-label={`${title}を${isOpen ? "折りたたむ" : "展開する"}`}
+            aria-expanded={isOpen}
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded text-[color:var(--text-secondary)] calm-transition hover:bg-[color:var(--brand-primary-soft)] hover:text-[color:var(--brand-primary-active)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-primary)]"
+          >
+            <ChevronIcon open={isOpen} />
+          </button>
+        </div>
+        {isOpen && <div className="space-y-4">{children}</div>}
+      </section>
+    </div>
   );
 }
 
@@ -365,12 +588,19 @@ function FormActionBar({
 
 export default function HeadacheLogForm({
   initial,
+  initialPreference,
+  isNewLog = true,
   onSubmit,
   onDelete,
   submitLabel = "保存",
 }: {
   initial?: Partial<HeadacheLogFormData>;
-  onSubmit: (data: HeadacheLogFormData) => Promise<void> | void;
+  initialPreference?: HeadacheLogPreferenceInput;
+  isNewLog?: boolean;
+  onSubmit: (
+    data: HeadacheLogFormData,
+    preference: HeadacheLogPreferenceInput
+  ) => Promise<void> | void;
   onDelete?: () => Promise<void> | void;
   submitLabel?: string;
 }) {
@@ -381,7 +611,9 @@ export default function HeadacheLogForm({
   const [intensity, setIntensity] = useState(initial?.intensity ?? 1);
   const initialDuration = initial?.duration;
   const [durationEnabled, setDurationEnabled] = useState(initialDuration !== undefined);
-  const [durationMode, setDurationMode] = useState<"end" | "duration">("end");
+  const [durationMode, setDurationMode] = useState<"end" | "duration">(() =>
+    initialPreference?.durationInputType === "duration" ? "duration" : "end"
+  );
   const [durationDays, setDurationDays] = useState(() =>
     initialDuration === undefined ? "" : splitDurationToFields(initialDuration).days
   );
@@ -420,6 +652,12 @@ export default function HeadacheLogForm({
     }))
   );
   const [note, setNote] = useState(initial?.note ?? "");
+  const [itemOrder, setItemOrder] = useState<OptionalItemKey[]>(() =>
+    normalizeFormOrder(initialPreference?.formOrder)
+  );
+  const [visibilityMap, setVisibilityMap] = useState<Record<OptionalItemKey, boolean>>(() =>
+    buildInitialVisibilityMap({ initial, initialPreference, isNewLog })
+  );
   const [pinned, setPinned] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -434,6 +672,17 @@ export default function HeadacheLogForm({
   const [actionErrors, setActionErrors] = useState<ActionErrors[]>([]);
   const [medicationErrors, setMedicationErrors] = useState<MedicationErrors[]>([]);
   const [noteError, setNoteError] = useState("");
+  const dndId = useId();
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   const durationPreview = useMemo(() => {
     if (!durationEnabled || durationMode !== "end") return undefined;
@@ -581,7 +830,11 @@ export default function HeadacheLogForm({
 
     setSubmitting(true);
     try {
-      await onSubmit(payload);
+      await onSubmit(payload, {
+        formOrder: itemOrder,
+        durationInputType: durationMode === "duration" ? "duration" : "endDatetime",
+        ...(isNewLog ? { visibleItems: visibilityMap } : {}),
+      });
     } catch (error) {
       console.error("頭痛記録保存エラー:", error);
       setFormError("保存できませんでした。入力内容を確認してもう一度お試しください。");
@@ -616,433 +869,463 @@ export default function HeadacheLogForm({
     ]);
   };
 
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    setItemOrder((current) => {
+      const oldIndex = current.indexOf(active.id as OptionalItemKey);
+      const newIndex = current.indexOf(over.id as OptionalItemKey);
+      if (oldIndex === -1 || newIndex === -1) return current;
+      return arrayMove(current, oldIndex, newIndex);
+    });
+  };
+
+  const toggleOptionalItem = (key: OptionalItemKey) => {
+    setVisibilityMap((current) => ({ ...current, [key]: !current[key] }));
+  };
+
+  const renderOptionalItem = (key: OptionalItemKey) => {
+    switch (key) {
+      case "duration":
+        return (
+          <>
+            <label className="inline-flex items-center gap-2 text-sm font-medium text-[color:var(--text-primary)]">
+              <input
+                type="checkbox"
+                checked={durationEnabled}
+                onChange={(event) => setDurationEnabled(event.target.checked)}
+                className="h-4 w-4 accent-[color:var(--brand-primary)]"
+              />
+              継続時間を記録する
+            </label>
+            {durationEnabled && (
+              <>
+                <div className="grid grid-cols-2 overflow-hidden rounded border border-[color:var(--border)]">
+                  <button
+                    type="button"
+                    onClick={() => handleDurationModeChange("end")}
+                    className={`h-10 text-sm font-medium calm-transition ${
+                      durationMode === "end"
+                        ? "bg-[color:var(--brand-primary)] text-[color:var(--brand-on-primary)]"
+                        : "bg-white text-[color:var(--text-secondary)] hover:bg-[color:var(--brand-primary-soft)]"
+                    }`}
+                  >
+                    終了日時
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDurationModeChange("duration")}
+                    className={`h-10 border-l border-[color:var(--border)] text-sm font-medium calm-transition ${
+                      durationMode === "duration"
+                        ? "bg-[color:var(--brand-primary)] text-[color:var(--brand-on-primary)]"
+                        : "bg-white text-[color:var(--text-secondary)] hover:bg-[color:var(--brand-primary-soft)]"
+                    }`}
+                  >
+                    継続時間
+                  </button>
+                </div>
+                {durationMode === "end" ? (
+                  <div className="space-y-2">
+                    <label className="space-y-2">
+                      <span className={labelClass}>終了日時</span>
+                      <input
+                        type="datetime-local"
+                        value={endTiming}
+                        onChange={(event) => setEndTiming(event.target.value)}
+                        className={inputClass}
+                      />
+                    </label>
+                    {durationPreview !== undefined && (
+                      <p className="text-sm text-[color:var(--text-secondary)]">
+                        継続時間: {formatDurationLabel(durationPreview)}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-3 gap-3">
+                    <label className="space-y-2">
+                      <span className={labelClass}>日</span>
+                      <input
+                        type="number"
+                        min={0}
+                        value={durationDays}
+                        onChange={(event) => setDurationDays(event.target.value)}
+                        className={inputClass}
+                      />
+                    </label>
+                    <label className="space-y-2">
+                      <span className={labelClass}>時間</span>
+                      <input
+                        type="number"
+                        min={0}
+                        value={durationHours}
+                        onChange={(event) => setDurationHours(event.target.value)}
+                        className={inputClass}
+                      />
+                    </label>
+                    <label className="space-y-2">
+                      <span className={labelClass}>分</span>
+                      <input
+                        type="number"
+                        min={0}
+                        value={durationMinutes}
+                        onChange={(event) => setDurationMinutes(event.target.value)}
+                        className={inputClass}
+                      />
+                    </label>
+                  </div>
+                )}
+                <ErrorText>{durationError}</ErrorText>
+              </>
+            )}
+          </>
+        );
+      case "location":
+        return (
+          <MultiTextField
+            values={locations}
+            onChange={(values) => {
+              setLocations(values);
+              setMultiTextErrors((current) => ({ ...current, locations: [] }));
+            }}
+            errors={multiTextErrors.locations}
+            placeholder="こめかみ、頭全体 など"
+          />
+        );
+      case "type":
+        return (
+          <MultiTextField
+            values={types}
+            onChange={(values) => {
+              setTypes(values);
+              setMultiTextErrors((current) => ({ ...current, types: [] }));
+            }}
+            errors={multiTextErrors.types}
+            placeholder="ズキズキ、締め付け など"
+          />
+        );
+      case "trigger":
+        return (
+          <MultiTextField
+            values={triggers}
+            onChange={(values) => {
+              setTriggers(values);
+              setMultiTextErrors((current) => ({ ...current, triggers: [] }));
+            }}
+            errors={multiTextErrors.triggers}
+            placeholder="寝不足、ストレス など"
+          />
+        );
+      case "associatedSymptoms":
+        return (
+          <MultiTextField
+            values={associatedSymptoms}
+            onChange={(values) => {
+              setAssociatedSymptoms(values);
+              setMultiTextErrors((current) => ({ ...current, associatedSymptoms: [] }));
+            }}
+            errors={multiTextErrors.associatedSymptoms}
+            placeholder="吐き気、めまい など"
+          />
+        );
+      case "action":
+        return (
+          <div className="space-y-4">
+            {actions.length === 0 ? (
+              <p className="text-sm text-[color:var(--text-secondary)]">未入力です。</p>
+            ) : (
+              actions.map((action, index) => (
+                <div
+                  key={index}
+                  className="space-y-3 rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-3"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold text-[color:var(--text-primary)]">
+                      対処 {index + 1}
+                    </p>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="h-9 px-4"
+                      onClick={() => {
+                        setActions((current) => removeAt(current, index));
+                        setActionErrors((current) => removeAt(current, index));
+                      }}
+                    >
+                      削除
+                    </Button>
+                  </div>
+                  <label className="space-y-2">
+                    <span className={labelClass}>日時</span>
+                    <input
+                      type="datetime-local"
+                      value={action.takenAt}
+                      onChange={(event) =>
+                        setActions((current) =>
+                          current.map((item, idx) =>
+                            idx === index ? { ...item, takenAt: event.target.value } : item
+                          )
+                        )
+                      }
+                      className={smallInputClass}
+                    />
+                    <ErrorText>{actionErrors[index]?.takenAt}</ErrorText>
+                  </label>
+                  <label className="space-y-2">
+                    <span className={labelClass}>内容</span>
+                    <input
+                      type="text"
+                      value={action.text}
+                      onChange={(event) =>
+                        setActions((current) =>
+                          current.map((item, idx) =>
+                            idx === index ? { ...item, text: event.target.value } : item
+                          )
+                        )
+                      }
+                      className={smallInputClass}
+                      placeholder="休む、冷やす など"
+                    />
+                    <ErrorText>{actionErrors[index]?.text}</ErrorText>
+                  </label>
+                  <EffectivenessControl
+                    enabled={action.effectivenessEnabled}
+                    value={action.effectiveness}
+                    onEnabledChange={(enabled) =>
+                      setActions((current) =>
+                        current.map((item, idx) =>
+                          idx === index
+                            ? {
+                                ...item,
+                                effectivenessEnabled: enabled,
+                                effectiveness: enabled ? item.effectiveness : 0,
+                              }
+                            : item
+                        )
+                      )
+                    }
+                    onValueChange={(value) =>
+                      setActions((current) =>
+                        current.map((item, idx) =>
+                          idx === index ? { ...item, effectiveness: value } : item
+                        )
+                      )
+                    }
+                  />
+                </div>
+              ))
+            )}
+            <Button type="button" variant="secondary" onClick={addAction}>
+              + 追加
+            </Button>
+          </div>
+        );
+      case "medication":
+        return (
+          <div className="space-y-4">
+            {medications.length === 0 ? (
+              <p className="text-sm text-[color:var(--text-secondary)]">未入力です。</p>
+            ) : (
+              medications.map((medication, index) => (
+                <div
+                  key={index}
+                  className="space-y-3 rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-3"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold text-[color:var(--text-primary)]">
+                      服薬 {index + 1}
+                    </p>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="h-9 px-4"
+                      onClick={() => {
+                        setMedications((current) => removeAt(current, index));
+                        setMedicationErrors((current) => removeAt(current, index));
+                      }}
+                    >
+                      削除
+                    </Button>
+                  </div>
+                  <label className="space-y-2">
+                    <span className={labelClass}>日時</span>
+                    <input
+                      type="datetime-local"
+                      value={medication.takenAt}
+                      onChange={(event) =>
+                        setMedications((current) =>
+                          current.map((item, idx) =>
+                            idx === index ? { ...item, takenAt: event.target.value } : item
+                          )
+                        )
+                      }
+                      className={smallInputClass}
+                    />
+                    <ErrorText>{medicationErrors[index]?.takenAt}</ErrorText>
+                  </label>
+                  <label className="space-y-2">
+                    <span className={labelClass}>薬の名前</span>
+                    <input
+                      type="text"
+                      value={medication.name}
+                      onChange={(event) =>
+                        setMedications((current) =>
+                          current.map((item, idx) =>
+                            idx === index ? { ...item, name: event.target.value } : item
+                          )
+                        )
+                      }
+                      className={smallInputClass}
+                      placeholder="薬の名前"
+                    />
+                    <ErrorText>{medicationErrors[index]?.name}</ErrorText>
+                  </label>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="space-y-2">
+                      <span className={labelClass}>用量</span>
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        step="0.5"
+                        min={0}
+                        value={medication.dosageText}
+                        onChange={(event) =>
+                          setMedications((current) =>
+                            current.map((item, idx) =>
+                              idx === index ? { ...item, dosageText: event.target.value } : item
+                            )
+                          )
+                        }
+                        className={smallInputClass}
+                        placeholder="例: 1"
+                      />
+                      <ErrorText>{medicationErrors[index]?.dosage}</ErrorText>
+                    </label>
+                    <label className="space-y-2">
+                      <span className={labelClass}>単位</span>
+                      <input
+                        type="text"
+                        value={medication.unit}
+                        onChange={(event) =>
+                          setMedications((current) =>
+                            current.map((item, idx) =>
+                              idx === index ? { ...item, unit: event.target.value } : item
+                            )
+                          )
+                        }
+                        className={smallInputClass}
+                        placeholder="錠、mg など"
+                      />
+                      <ErrorText>{medicationErrors[index]?.unit}</ErrorText>
+                    </label>
+                  </div>
+                  <EffectivenessControl
+                    enabled={medication.effectivenessEnabled}
+                    value={medication.effectiveness}
+                    onEnabledChange={(enabled) =>
+                      setMedications((current) =>
+                        current.map((item, idx) =>
+                          idx === index
+                            ? {
+                                ...item,
+                                effectivenessEnabled: enabled,
+                                effectiveness: enabled ? item.effectiveness : 0,
+                              }
+                            : item
+                        )
+                      )
+                    }
+                    onValueChange={(value) =>
+                      setMedications((current) =>
+                        current.map((item, idx) =>
+                          idx === index ? { ...item, effectiveness: value } : item
+                        )
+                      )
+                    }
+                  />
+                </div>
+              ))
+            )}
+            <Button type="button" variant="secondary" onClick={addMedication}>
+              + 追加
+            </Button>
+          </div>
+        );
+      case "note":
+        return (
+          <>
+            <textarea
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              rows={5}
+              className="w-full rounded border border-[color:var(--border)] bg-white px-3 py-2 text-base text-[color:var(--text-primary)] outline-none calm-transition placeholder:text-[color:var(--text-muted)] focus:border-[color:var(--brand-primary)] focus:ring-2 focus:ring-[color:var(--brand-primary-soft)]"
+              placeholder="気づいたことを記録できます"
+            />
+            <p
+              className={`text-right text-sm ${
+                note.length > MAX_NOTE_LENGTH ? "text-red-600" : "text-[color:var(--text-muted)]"
+              }`}
+            >
+              {note.length} / {MAX_NOTE_LENGTH} 文字以内
+            </p>
+            <ErrorText>{noteError}</ErrorText>
+          </>
+        );
+    }
+  };
+
   return (
     <form onSubmit={handleSubmit} className={pinned ? "pb-32" : ""}>
-      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:items-start">
-        <div className="contents lg:flex lg:flex-col lg:gap-4">
-          <div className="order-1">
-            <FieldCard title="発生日時" required>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="space-y-2">
-                  <span className={labelClass}>日付</span>
-                  <input
-                    type="date"
-                    value={timingDate}
-                    onChange={(event) => setTimingDate(event.target.value)}
-                    className={inputClass}
-                  />
-                </label>
-                <label className="space-y-2">
-                  <span className={labelClass}>時刻</span>
-                  <input
-                    type="time"
-                    value={timingTime}
-                    onChange={(event) => setTimingTime(event.target.value)}
-                    className={inputClass}
-                  />
-                </label>
-              </div>
-              <ErrorText>{timingError}</ErrorText>
-            </FieldCard>
-          </div>
-
-          <div className="order-2">
-            <FieldCard title="痛みの強さ" required>
-              <SliderWithBubble value={intensity} min={1} max={10} onChange={setIntensity} />
-            </FieldCard>
-          </div>
-
-          <div className="order-3">
-            <FieldCard title="継続時間">
-              <label className="inline-flex items-center gap-2 text-sm font-medium text-[color:var(--text-primary)]">
-                <input
-                  type="checkbox"
-                  checked={durationEnabled}
-                  onChange={(event) => setDurationEnabled(event.target.checked)}
-                  className="h-4 w-4 accent-[color:var(--brand-primary)]"
-                />
-                継続時間を記録する
-              </label>
-              {durationEnabled && (
-                <>
-                  <div className="grid grid-cols-2 overflow-hidden rounded border border-[color:var(--border)]">
-                    <button
-                      type="button"
-                      onClick={() => handleDurationModeChange("end")}
-                      className={`h-10 text-sm font-medium calm-transition ${
-                        durationMode === "end"
-                          ? "bg-[color:var(--brand-primary)] text-[color:var(--brand-on-primary)]"
-                          : "bg-white text-[color:var(--text-secondary)] hover:bg-[color:var(--brand-primary-soft)]"
-                      }`}
-                    >
-                      終了日時
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDurationModeChange("duration")}
-                      className={`h-10 border-l border-[color:var(--border)] text-sm font-medium calm-transition ${
-                        durationMode === "duration"
-                          ? "bg-[color:var(--brand-primary)] text-[color:var(--brand-on-primary)]"
-                          : "bg-white text-[color:var(--text-secondary)] hover:bg-[color:var(--brand-primary-soft)]"
-                      }`}
-                    >
-                      継続時間
-                    </button>
-                  </div>
-                  {durationMode === "end" ? (
-                    <div className="space-y-2">
-                      <label className="space-y-2">
-                        <span className={labelClass}>終了日時</span>
-                        <input
-                          type="datetime-local"
-                          value={endTiming}
-                          onChange={(event) => setEndTiming(event.target.value)}
-                          className={inputClass}
-                        />
-                      </label>
-                      {durationPreview !== undefined && (
-                        <p className="text-sm text-[color:var(--text-secondary)]">
-                          継続時間: {formatDurationLabel(durationPreview)}
-                        </p>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-3 gap-3">
-                      <label className="space-y-2">
-                        <span className={labelClass}>日</span>
-                        <input
-                          type="number"
-                          min={0}
-                          value={durationDays}
-                          onChange={(event) => setDurationDays(event.target.value)}
-                          className={inputClass}
-                        />
-                      </label>
-                      <label className="space-y-2">
-                        <span className={labelClass}>時間</span>
-                        <input
-                          type="number"
-                          min={0}
-                          value={durationHours}
-                          onChange={(event) => setDurationHours(event.target.value)}
-                          className={inputClass}
-                        />
-                      </label>
-                      <label className="space-y-2">
-                        <span className={labelClass}>分</span>
-                        <input
-                          type="number"
-                          min={0}
-                          value={durationMinutes}
-                          onChange={(event) => setDurationMinutes(event.target.value)}
-                          className={inputClass}
-                        />
-                      </label>
-                    </div>
-                  )}
-                  <ErrorText>{durationError}</ErrorText>
-                </>
-              )}
-            </FieldCard>
-          </div>
-
-          <div className="order-8">
-            <FieldCard title="対処">
-              <div className="space-y-4">
-                {actions.length === 0 ? (
-                  <p className="text-sm text-[color:var(--text-secondary)]">未入力です。</p>
-                ) : (
-                  actions.map((action, index) => (
-                    <div
-                      key={index}
-                      className="space-y-3 rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-3"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-semibold text-[color:var(--text-primary)]">
-                          対処 {index + 1}
-                        </p>
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          className="h-9 px-4"
-                          onClick={() => {
-                            setActions((current) => removeAt(current, index));
-                            setActionErrors((current) => removeAt(current, index));
-                          }}
-                        >
-                          削除
-                        </Button>
-                      </div>
-                      <label className="space-y-2">
-                        <span className={labelClass}>日時</span>
-                        <input
-                          type="datetime-local"
-                          value={action.takenAt}
-                          onChange={(event) =>
-                            setActions((current) =>
-                              current.map((item, idx) =>
-                                idx === index ? { ...item, takenAt: event.target.value } : item
-                              )
-                            )
-                          }
-                          className={smallInputClass}
-                        />
-                        <ErrorText>{actionErrors[index]?.takenAt}</ErrorText>
-                      </label>
-                      <label className="space-y-2">
-                        <span className={labelClass}>内容</span>
-                        <input
-                          type="text"
-                          value={action.text}
-                          onChange={(event) =>
-                            setActions((current) =>
-                              current.map((item, idx) =>
-                                idx === index ? { ...item, text: event.target.value } : item
-                              )
-                            )
-                          }
-                          className={smallInputClass}
-                          placeholder="休む、冷やす など"
-                        />
-                        <ErrorText>{actionErrors[index]?.text}</ErrorText>
-                      </label>
-                      <EffectivenessControl
-                        enabled={action.effectivenessEnabled}
-                        value={action.effectiveness}
-                        onEnabledChange={(enabled) =>
-                          setActions((current) =>
-                            current.map((item, idx) =>
-                              idx === index
-                                ? { ...item, effectivenessEnabled: enabled, effectiveness: enabled ? item.effectiveness : 0 }
-                                : item
-                            )
-                          )
-                        }
-                        onValueChange={(value) =>
-                          setActions((current) =>
-                            current.map((item, idx) =>
-                              idx === index ? { ...item, effectiveness: value } : item
-                            )
-                          )
-                        }
-                      />
-                    </div>
-                  ))
-                )}
-                <Button type="button" variant="secondary" onClick={addAction}>
-                  + 追加
-                </Button>
-              </div>
-            </FieldCard>
-          </div>
-
-          <div className="order-10">
-            <FieldCard title="メモ">
-              <textarea
-                value={note}
-                onChange={(event) => setNote(event.target.value)}
-                rows={5}
-                className="w-full rounded border border-[color:var(--border)] bg-white px-3 py-2 text-base text-[color:var(--text-primary)] outline-none calm-transition placeholder:text-[color:var(--text-muted)] focus:border-[color:var(--brand-primary)] focus:ring-2 focus:ring-[color:var(--brand-primary-soft)]"
-                placeholder="気づいたことを記録できます"
+      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:items-start lg:gap-4">
+        <FieldCard title="発生日時" required>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="space-y-2">
+              <span className={labelClass}>日付</span>
+              <input
+                type="date"
+                value={timingDate}
+                onChange={(event) => setTimingDate(event.target.value)}
+                className={inputClass}
               />
-              <p
-                className={`text-right text-sm ${
-                  note.length > MAX_NOTE_LENGTH ? "text-red-600" : "text-[color:var(--text-muted)]"
-                }`}
+            </label>
+            <label className="space-y-2">
+              <span className={labelClass}>時刻</span>
+              <input
+                type="time"
+                value={timingTime}
+                onChange={(event) => setTimingTime(event.target.value)}
+                className={inputClass}
+              />
+            </label>
+          </div>
+          <ErrorText>{timingError}</ErrorText>
+        </FieldCard>
+
+        <FieldCard title="痛みの強さ" required>
+          <SliderWithBubble value={intensity} min={1} max={10} onChange={setIntensity} />
+        </FieldCard>
+
+        <DndContext
+          id={dndId}
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext items={itemOrder} strategy={rectSortingStrategy}>
+            {itemOrder.map((key) => (
+              <SortableOptionalCard
+                key={key}
+                id={key}
+                title={OPTIONAL_ITEM_TITLE_MAP[key]}
+                isOpen={visibilityMap[key]}
+                onToggle={() => toggleOptionalItem(key)}
               >
-                {note.length} / {MAX_NOTE_LENGTH} 文字以内
-              </p>
-              <ErrorText>{noteError}</ErrorText>
-            </FieldCard>
-          </div>
-        </div>
-
-        <div className="contents lg:flex lg:flex-col lg:gap-4">
-          <div className="order-4 lg:order-none">
-            <FieldCard title="痛みの場所">
-              <MultiTextField
-                values={locations}
-                onChange={(values) => {
-                  setLocations(values);
-                  setMultiTextErrors((current) => ({ ...current, locations: [] }));
-                }}
-                errors={multiTextErrors.locations}
-                placeholder="こめかみ、頭全体 など"
-              />
-            </FieldCard>
-          </div>
-
-          <div className="order-5 lg:order-none">
-            <FieldCard title="痛み方">
-              <MultiTextField
-                values={types}
-                onChange={(values) => {
-                  setTypes(values);
-                  setMultiTextErrors((current) => ({ ...current, types: [] }));
-                }}
-                errors={multiTextErrors.types}
-                placeholder="ズキズキ、締め付け など"
-              />
-            </FieldCard>
-          </div>
-
-          <div className="order-6 lg:order-none">
-            <FieldCard title="トリガー">
-              <MultiTextField
-                values={triggers}
-                onChange={(values) => {
-                  setTriggers(values);
-                  setMultiTextErrors((current) => ({ ...current, triggers: [] }));
-                }}
-                errors={multiTextErrors.triggers}
-                placeholder="寝不足、ストレス など"
-              />
-            </FieldCard>
-          </div>
-
-          <div className="order-7 lg:order-none">
-            <FieldCard title="併発症状">
-              <MultiTextField
-                values={associatedSymptoms}
-                onChange={(values) => {
-                  setAssociatedSymptoms(values);
-                  setMultiTextErrors((current) => ({ ...current, associatedSymptoms: [] }));
-                }}
-                errors={multiTextErrors.associatedSymptoms}
-                placeholder="吐き気、めまい など"
-              />
-            </FieldCard>
-          </div>
-
-          <div className="order-9 lg:order-none">
-            <FieldCard title="服薬">
-              <div className="space-y-4">
-                {medications.length === 0 ? (
-                  <p className="text-sm text-[color:var(--text-secondary)]">未入力です。</p>
-                ) : (
-                  medications.map((medication, index) => (
-                    <div
-                      key={index}
-                      className="space-y-3 rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-3"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-semibold text-[color:var(--text-primary)]">
-                          服薬 {index + 1}
-                        </p>
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          className="h-9 px-4"
-                          onClick={() => {
-                            setMedications((current) => removeAt(current, index));
-                            setMedicationErrors((current) => removeAt(current, index));
-                          }}
-                        >
-                          削除
-                        </Button>
-                      </div>
-                      <label className="space-y-2">
-                        <span className={labelClass}>日時</span>
-                        <input
-                          type="datetime-local"
-                          value={medication.takenAt}
-                          onChange={(event) =>
-                            setMedications((current) =>
-                              current.map((item, idx) =>
-                                idx === index ? { ...item, takenAt: event.target.value } : item
-                              )
-                            )
-                          }
-                          className={smallInputClass}
-                        />
-                        <ErrorText>{medicationErrors[index]?.takenAt}</ErrorText>
-                      </label>
-                      <label className="space-y-2">
-                        <span className={labelClass}>薬の名前</span>
-                        <input
-                          type="text"
-                          value={medication.name}
-                          onChange={(event) =>
-                            setMedications((current) =>
-                              current.map((item, idx) =>
-                                idx === index ? { ...item, name: event.target.value } : item
-                              )
-                            )
-                          }
-                          className={smallInputClass}
-                          placeholder="薬の名前"
-                        />
-                        <ErrorText>{medicationErrors[index]?.name}</ErrorText>
-                      </label>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <label className="space-y-2">
-                          <span className={labelClass}>用量</span>
-                          <input
-                            type="number"
-                            inputMode="decimal"
-                            step="0.5"
-                            min={0}
-                            value={medication.dosageText}
-                            onChange={(event) =>
-                              setMedications((current) =>
-                                current.map((item, idx) =>
-                                  idx === index ? { ...item, dosageText: event.target.value } : item
-                                )
-                              )
-                            }
-                            className={smallInputClass}
-                            placeholder="例: 1"
-                          />
-                          <ErrorText>{medicationErrors[index]?.dosage}</ErrorText>
-                        </label>
-                        <label className="space-y-2">
-                          <span className={labelClass}>単位</span>
-                          <input
-                            type="text"
-                            value={medication.unit}
-                            onChange={(event) =>
-                              setMedications((current) =>
-                                current.map((item, idx) =>
-                                  idx === index ? { ...item, unit: event.target.value } : item
-                                )
-                              )
-                            }
-                            className={smallInputClass}
-                            placeholder="錠、mg など"
-                          />
-                          <ErrorText>{medicationErrors[index]?.unit}</ErrorText>
-                        </label>
-                      </div>
-                      <EffectivenessControl
-                        enabled={medication.effectivenessEnabled}
-                        value={medication.effectiveness}
-                        onEnabledChange={(enabled) =>
-                          setMedications((current) =>
-                            current.map((item, idx) =>
-                              idx === index
-                                ? { ...item, effectivenessEnabled: enabled, effectiveness: enabled ? item.effectiveness : 0 }
-                                : item
-                            )
-                          )
-                        }
-                        onValueChange={(value) =>
-                          setMedications((current) =>
-                            current.map((item, idx) =>
-                              idx === index ? { ...item, effectiveness: value } : item
-                            )
-                          )
-                        }
-                      />
-                    </div>
-                  ))
-                )}
-                <Button type="button" variant="secondary" onClick={addMedication}>
-                  + 追加
-                </Button>
-              </div>
-            </FieldCard>
-          </div>
-        </div>
+                {renderOptionalItem(key)}
+              </SortableOptionalCard>
+            ))}
+          </SortableContext>
+        </DndContext>
       </div>
 
       {formError && (

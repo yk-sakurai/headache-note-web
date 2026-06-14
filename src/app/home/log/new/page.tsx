@@ -1,29 +1,109 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { getCurrentUser } from "@/lib/firebase/auth.client";
-import { ClientHeadacheLogRepository } from "@/lib/firestore/repositories/client";
+import {
+  ClientHeadacheLogPreferenceRepository,
+  ClientHeadacheLogRepository,
+} from "@/lib/firestore/repositories/client";
 import { sanitizeStringList } from "@/lib/firestore/repositories/sanitize";
 import type { HeadacheLog } from "@/lib/firestore/types";
-import HeadacheLogForm, { type HeadacheLogFormData } from "../HeadacheLogForm";
+import HeadacheLogForm, {
+  type HeadacheLogFormData,
+  type HeadacheLogPreferenceInput,
+} from "../HeadacheLogForm";
 import {
   deleteHeadacheFreeConflicts,
   findConflictingHeadacheFreeLogs,
 } from "../headacheFreeConflict";
 import { buildActionPayload, buildMedicationPayload, toTimestamp } from "../payload";
 
+const areStringArraysEqual = (a?: string[], b?: string[]) => {
+  const left = a ?? [];
+  const right = b ?? [];
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+};
+
+const areVisibilityMapsEqual = (
+  a?: Record<string, boolean>,
+  b?: Record<string, boolean>
+) => {
+  const left = a ?? {};
+  const right = b ?? {};
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+  return Array.from(keys).every((key) => Boolean(left[key]) === Boolean(right[key]));
+};
+
+const preferenceChanged = (
+  current: HeadacheLogPreferenceInput | null,
+  next: HeadacheLogPreferenceInput
+) => {
+  if (!current) return true;
+  return (
+    !areStringArraysEqual(current.formOrder, next.formOrder) ||
+    current.durationInputType !== next.durationInputType ||
+    !areVisibilityMapsEqual(current.visibleItems, next.visibleItems)
+  );
+};
+
+const toPreferenceInput = (
+  preference: Awaited<ReturnType<typeof ClientHeadacheLogPreferenceRepository.getByUserId>>
+): HeadacheLogPreferenceInput | null => {
+  if (!preference) return null;
+  return {
+    formOrder: preference.data.headacheLogFormOrder,
+    visibleItems: preference.data.visibleItems,
+    durationInputType: preference.data.durationInputType,
+  };
+};
+
 export default function NewHeadacheLogPage() {
   const router = useRouter();
   const [pendingData, setPendingData] = useState<HeadacheLogFormData | null>(null);
+  const [pendingPreference, setPendingPreference] = useState<HeadacheLogPreferenceInput | null>(
+    null
+  );
+  const [initialPreference, setInitialPreference] = useState<HeadacheLogPreferenceInput | null>(
+    null
+  );
+  const [preferenceLoading, setPreferenceLoading] = useState(true);
   const [conflicts, setConflicts] = useState<HeadacheLog[]>([]);
   const [conflictDialogOpen, setConflictDialogOpen] = useState(false);
   const [operationError, setOperationError] = useState<string | null>(null);
   const [confirmingConflict, setConfirmingConflict] = useState(false);
 
-  const saveLog = async (data: HeadacheLogFormData) => {
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const user = getCurrentUser();
+        if (!user) {
+          if (mounted) setPreferenceLoading(false);
+          return;
+        }
+
+        const preference = await ClientHeadacheLogPreferenceRepository.getByUserId(user.uid);
+        if (mounted) {
+          setInitialPreference(toPreferenceInput(preference));
+          setPreferenceLoading(false);
+        }
+      } catch (error) {
+        console.error("頭痛記録フォーム設定取得エラー:", error);
+        if (mounted) {
+          setInitialPreference(null);
+          setPreferenceLoading(false);
+        }
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const saveLog = async (data: HeadacheLogFormData, preference: HeadacheLogPreferenceInput) => {
     const user = getCurrentUser();
     if (!user) {
       throw new Error("ログインが必要です");
@@ -57,9 +137,21 @@ export default function NewHeadacheLogPage() {
       ...(actionsPayload.length > 0 ? { actions: actionsPayload } : {}),
       ...(noteText.length > 0 ? { note: noteText } : {}),
     });
+
+    if (preferenceChanged(initialPreference, preference)) {
+      await ClientHeadacheLogPreferenceRepository.save(user.uid, {
+        userId: user.uid,
+        headacheLogFormOrder: preference.formOrder,
+        visibleItems: preference.visibleItems,
+        durationInputType: preference.durationInputType,
+      });
+    }
   };
 
-  const handleSubmit = async (data: HeadacheLogFormData) => {
+  const handleSubmit = async (
+    data: HeadacheLogFormData,
+    preference: HeadacheLogPreferenceInput
+  ) => {
     if (confirmingConflict) return;
     setOperationError(null);
     const user = getCurrentUser();
@@ -75,23 +167,24 @@ export default function NewHeadacheLogPage() {
 
     if (nextConflicts.length > 0) {
       setPendingData(data);
+      setPendingPreference(preference);
       setConflicts(nextConflicts);
       setConflictDialogOpen(true);
       return;
     }
 
-    await saveLog(data);
+    await saveLog(data, preference);
     router.push("/records?notice=created");
   };
 
   const handleConfirmConflict = async () => {
-    if (!pendingData || confirmingConflict) return;
+    if (!pendingData || !pendingPreference || confirmingConflict) return;
     setConflictDialogOpen(false);
     setOperationError(null);
     setConfirmingConflict(true);
     try {
       await deleteHeadacheFreeConflicts(conflicts);
-      await saveLog(pendingData);
+      await saveLog(pendingData, pendingPreference);
       router.push("/records?notice=created");
     } catch (error) {
       console.error("頭痛なし記録の削除または頭痛記録保存エラー:", error);
@@ -120,7 +213,18 @@ export default function NewHeadacheLogPage() {
             {operationError}
           </p>
         )}
-        <HeadacheLogForm onSubmit={handleSubmit} submitLabel="決定" />
+        {preferenceLoading ? (
+          <p className="rounded border border-[color:var(--brand-mint-border)] bg-white px-4 py-3 text-sm text-[color:var(--text-secondary)]">
+            読み込み中...
+          </p>
+        ) : (
+          <HeadacheLogForm
+            initialPreference={initialPreference ?? undefined}
+            isNewLog={true}
+            onSubmit={handleSubmit}
+            submitLabel="決定"
+          />
+        )}
       </div>
       <ConfirmDialog
         isOpen={conflictDialogOpen}
@@ -132,6 +236,7 @@ export default function NewHeadacheLogPage() {
         onCancel={() => {
           setConflictDialogOpen(false);
           setPendingData(null);
+          setPendingPreference(null);
           setConflicts([]);
         }}
       />
