@@ -25,6 +25,7 @@ import {
   CheckoutSession,
   Device,
   HeadacheLog,
+  HeadacheLogPreference,
 } from "../types";
 import { omitUndefinedDeep, sanitizeHeadacheLogStrings } from "./sanitize";
 
@@ -32,6 +33,13 @@ export type HeadacheLogUpdateData = {
   [K in keyof Omit<HeadacheLog, "id">]?:
     | Omit<HeadacheLog, "id">[K]
     | FieldValue;
+};
+
+type HeadacheLogPreferenceSaveData = Pick<
+  HeadacheLogPreference,
+  "userId" | "headacheLogFormOrder" | "durationInputType"
+> & {
+  visibleItems?: Record<string, boolean>;
 };
 
 /**
@@ -355,6 +363,58 @@ export class ClientHeadacheLogRepository {
     } catch (error) {
       console.error("Error deleting headache log:", error);
       throw new Error("頭痛記録の削除に失敗しました");
+    }
+  }
+}
+
+/**
+ * HeadacheLogPreference Repository (Client-side)
+ */
+export class ClientHeadacheLogPreferenceRepository {
+  static async getByUserId(
+    uid: string
+  ): Promise<{ docId: string; data: HeadacheLogPreference } | null> {
+    try {
+      const preferencesRef = collection(db, "headache_log_preferences");
+      const q = query(preferencesRef, where("userId", "==", uid), firestoreLimit(1));
+      const querySnapshot = await getDocs(q);
+      const preferenceDoc = querySnapshot.docs[0];
+
+      if (!preferenceDoc) {
+        return null;
+      }
+
+      return {
+        docId: preferenceDoc.id,
+        data: preferenceDoc.data() as HeadacheLogPreference,
+      };
+    } catch (error) {
+      console.error("Error getting headache log preference:", error);
+      throw new Error("頭痛記録フォーム設定の取得に失敗しました");
+    }
+  }
+
+  static async save(uid: string, fields: HeadacheLogPreferenceSaveData): Promise<void> {
+    try {
+      const payload = omitUndefinedDeep({
+        userId: uid,
+        headacheLogFormOrder: fields.headacheLogFormOrder,
+        visibleItems: fields.visibleItems,
+        durationInputType: fields.durationInputType,
+      });
+      const existing = await this.getByUserId(uid);
+
+      if (existing) {
+        const docRef = doc(db, "headache_log_preferences", existing.docId);
+        await updateDoc(docRef, payload as Record<string, unknown>);
+        return;
+      }
+
+      const collectionRef = collection(db, "headache_log_preferences");
+      await addDoc(collectionRef, payload as Record<string, unknown>);
+    } catch (error) {
+      console.error("Error saving headache log preference:", error);
+      throw new Error("頭痛記録フォーム設定の保存に失敗しました");
     }
   }
 }

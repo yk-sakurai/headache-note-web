@@ -209,3 +209,14 @@ export interface HeadacheLog {
   note?: string;
   isHeadacheFree?: boolean;
 }
+
+export type HeadacheLogDurationInputType = "endDatetime" | "duration";
+
+export interface HeadacheLogPreference {
+  userId: string;
+  headacheLogFormOrder?: string[];
+  visibleItems?: Record<string, boolean>;
+  durationInputType?: HeadacheLogDurationInputType;
+  hiddenRecommendedInputSetKeys?: string[];
+  suggestionSettings?: Record<string, unknown>;
+}
