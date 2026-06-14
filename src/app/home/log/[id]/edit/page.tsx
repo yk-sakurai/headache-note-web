@@ -6,13 +6,17 @@ import { useParams, useRouter } from "next/navigation";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { getCurrentUser } from "@/lib/firebase/auth.client";
 import {
+  ClientHeadacheLogPreferenceRepository,
   ClientHeadacheLogRepository,
   type HeadacheLogUpdateData,
 } from "@/lib/firestore/repositories/client";
 import { sanitizeStringList } from "@/lib/firestore/repositories/sanitize";
 import type { HeadacheLog } from "@/lib/firestore/types";
 import { deleteField, type Timestamp } from "firebase/firestore";
-import HeadacheLogForm, { type HeadacheLogFormData } from "../../HeadacheLogForm";
+import HeadacheLogForm, {
+  type HeadacheLogFormData,
+  type HeadacheLogPreferenceInput,
+} from "../../HeadacheLogForm";
 import { toLocalDateTimeInput } from "../../datetime";
 import {
   deleteHeadacheFreeConflicts,
@@ -20,13 +24,30 @@ import {
 } from "../../headacheFreeConflict";
 import { buildActionPayload, buildMedicationPayload, toTimestamp } from "../../payload";
 
+const toPreferenceInput = (
+  preference: Awaited<ReturnType<typeof ClientHeadacheLogPreferenceRepository.getByUserId>>
+): HeadacheLogPreferenceInput | null => {
+  if (!preference) return null;
+  return {
+    formOrder: preference.data.headacheLogFormOrder,
+    visibleItems: preference.data.visibleItems,
+    durationInputType: preference.data.durationInputType,
+  };
+};
+
 export default function EditHeadacheLogPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const logId = params?.id;
   const [log, setLog] = useState<HeadacheLog | null>(null);
+  const [initialPreference, setInitialPreference] = useState<HeadacheLogPreferenceInput | null>(
+    null
+  );
   const [loading, setLoading] = useState(true);
   const [pendingData, setPendingData] = useState<HeadacheLogFormData | null>(null);
+  const [pendingPreference, setPendingPreference] = useState<HeadacheLogPreferenceInput | null>(
+    null
+  );
   const [conflicts, setConflicts] = useState<HeadacheLog[]>([]);
   const [conflictDialogOpen, setConflictDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -40,9 +61,14 @@ export default function EditHeadacheLogPage() {
     (async () => {
       if (!logId) return;
       try {
-        const result = await ClientHeadacheLogRepository.getLog(logId);
+        const user = getCurrentUser();
+        const [result, preference] = await Promise.all([
+          ClientHeadacheLogRepository.getLog(logId),
+          user ? ClientHeadacheLogPreferenceRepository.getByUserId(user.uid) : Promise.resolve(null),
+        ]);
         if (mounted) {
           setLog(result);
+          setInitialPreference(toPreferenceInput(preference));
           setLoading(false);
         }
       } catch (error) {
@@ -84,8 +110,12 @@ export default function EditHeadacheLogPage() {
     };
   }, [log]);
 
-  const saveLog = async (data: HeadacheLogFormData) => {
+  const saveLog = async (data: HeadacheLogFormData, preference: HeadacheLogPreferenceInput) => {
     if (!logId) return;
+    const user = getCurrentUser();
+    if (!user) {
+      throw new Error("ログインが必要です");
+    }
 
     const timing = toTimestamp(data.timing);
     if (!timing) {
@@ -149,9 +179,17 @@ export default function EditHeadacheLogPage() {
     }
 
     await ClientHeadacheLogRepository.updateLog(logId, updates);
+    await ClientHeadacheLogPreferenceRepository.save(user.uid, {
+      userId: user.uid,
+      headacheLogFormOrder: preference.formOrder,
+      durationInputType: preference.durationInputType,
+    });
   };
 
-  const handleSubmit = async (data: HeadacheLogFormData) => {
+  const handleSubmit = async (
+    data: HeadacheLogFormData,
+    preference: HeadacheLogPreferenceInput
+  ) => {
     if (confirmingConflict || deleting) return;
     setOperationError(null);
     const user = getCurrentUser();
@@ -168,23 +206,24 @@ export default function EditHeadacheLogPage() {
 
     if (nextConflicts.length > 0) {
       setPendingData(data);
+      setPendingPreference(preference);
       setConflicts(nextConflicts);
       setConflictDialogOpen(true);
       return;
     }
 
-    await saveLog(data);
+    await saveLog(data, preference);
     router.push("/records?notice=updated");
   };
 
   const handleConfirmConflict = async () => {
-    if (!pendingData || confirmingConflict) return;
+    if (!pendingData || !pendingPreference || confirmingConflict) return;
     setConflictDialogOpen(false);
     setOperationError(null);
     setConfirmingConflict(true);
     try {
       await deleteHeadacheFreeConflicts(conflicts);
-      await saveLog(pendingData);
+      await saveLog(pendingData, pendingPreference);
       router.push("/records?notice=updated");
     } catch (error) {
       console.error("頭痛なし記録の削除または頭痛記録保存エラー:", error);
@@ -247,6 +286,8 @@ export default function EditHeadacheLogPage() {
         )}
         <HeadacheLogForm
           initial={initial}
+          initialPreference={initialPreference ?? undefined}
+          isNewLog={false}
           onSubmit={handleSubmit}
           onDelete={() => setDeleteDialogOpen(true)}
           submitLabel="決定"
@@ -262,6 +303,7 @@ export default function EditHeadacheLogPage() {
         onCancel={() => {
           setConflictDialogOpen(false);
           setPendingData(null);
+          setPendingPreference(null);
           setConflicts([]);
         }}
       />
