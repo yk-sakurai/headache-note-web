@@ -8,10 +8,16 @@ import { getCurrentUser } from "@/lib/firebase/auth.client";
 import {
   ClientHeadacheLogPreferenceRepository,
   ClientHeadacheLogRepository,
+  ClientUsageTrackingRepository,
   type HeadacheLogUpdateData,
 } from "@/lib/firestore/repositories/client";
 import { sanitizeStringList } from "@/lib/firestore/repositories/sanitize";
 import type { HeadacheLog } from "@/lib/firestore/types";
+import {
+  buildSuggestionsByField,
+  type MergedSuggestionItem,
+  type SuggestionFieldKey,
+} from "@/lib/firestore/suggestion-types";
 import { deleteField, type Timestamp } from "firebase/firestore";
 import HeadacheLogForm, {
   type HeadacheLogFormData,
@@ -35,10 +41,24 @@ const toPreferenceInput = (
   };
 };
 
+const createSuggestionRange = () => {
+  const end = new Date();
+  end.setHours(23, 59, 59, 999);
+  const start = new Date(end);
+  start.setDate(start.getDate() - 364);
+  start.setHours(0, 0, 0, 0);
+  return { startMs: start.getTime(), endMs: end.getTime() };
+};
+
+const createSessionId = () => {
+  return globalThis.crypto?.randomUUID?.() ?? `web-${Date.now()}-${Math.random()}`;
+};
+
 export default function EditHeadacheLogPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const logId = params?.id;
+  const [sessionId] = useState(createSessionId);
   const [log, setLog] = useState<HeadacheLog | null>(null);
   const [initialPreference, setInitialPreference] = useState<HeadacheLogPreferenceInput | null>(
     null
@@ -55,6 +75,9 @@ export default function EditHeadacheLogPage() {
   const [operationError, setOperationError] = useState<string | null>(null);
   const [confirmingConflict, setConfirmingConflict] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [suggestions, setSuggestions] = useState<
+    Partial<Record<SuggestionFieldKey, MergedSuggestionItem[]>>
+  >({});
 
   useEffect(() => {
     let mounted = true;
@@ -62,14 +85,28 @@ export default function EditHeadacheLogPage() {
       if (!logId) return;
       try {
         const user = getCurrentUser();
+        const { startMs, endMs } = createSuggestionRange();
         const [result, preference] = await Promise.all([
           ClientHeadacheLogRepository.getLog(logId),
           user ? ClientHeadacheLogPreferenceRepository.getByUserId(user.uid) : Promise.resolve(null),
         ]);
+
         if (mounted) {
           setLog(result);
           setInitialPreference(toPreferenceInput(preference));
           setLoading(false);
+        }
+
+        if (user) {
+          ClientHeadacheLogRepository.listLogsInRange(user.uid, startMs, endMs)
+            .then((logs) => {
+              if (!mounted) return;
+              setSuggestions(buildSuggestionsByField(logs, preference?.data.suggestionSettings));
+            })
+            .catch((error) => {
+              console.error("頭痛記録候補取得エラー:", error);
+              if (mounted) setSuggestions({});
+            });
         }
       } catch (error) {
         console.error("頭痛記録取得エラー:", error);
@@ -216,6 +253,12 @@ export default function EditHeadacheLogPage() {
     router.push("/records?notice=updated");
   };
 
+  const handleSuggestionUsed = () => {
+    const user = getCurrentUser();
+    if (!user) return;
+    void ClientUsageTrackingRepository.trackSuggestionUsed(user.uid, sessionId, false);
+  };
+
   const handleConfirmConflict = async () => {
     if (!pendingData || !pendingPreference || confirmingConflict) return;
     setConflictDialogOpen(false);
@@ -287,6 +330,9 @@ export default function EditHeadacheLogPage() {
         <HeadacheLogForm
           initial={initial}
           initialPreference={initialPreference ?? undefined}
+          suggestions={suggestions}
+          onSuggestionUsed={handleSuggestionUsed}
+          logSuggestionEditBasePath="/home/log/suggestion"
           isNewLog={false}
           onSubmit={handleSubmit}
           onDelete={() => setDeleteDialogOpen(true)}

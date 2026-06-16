@@ -1116,7 +1116,7 @@ interface SuggestionSettings {
     manualItems?: {        // 手動追加候補（最大20件）
       value: { type: "text", text: string } | { type: "medication", name: string, dosage: number, unit: string };
       isVisible: boolean;  // デフォルト true
-      order: number;       // 1始まり
+      order: number;       // 表示順。小さい値を先に表示
     }[];
     mostFrequentOverride?: {  // 最頻値スロットのオーバーライド設定
       isVisible?: boolean;     // デフォルト true（false時のみ保存）
@@ -1129,6 +1129,8 @@ interface SuggestionSettings {
   };
 }
 ```
+
+フォーム上の表示は、手動候補を最大7件、自動候補を最大2件まで表示します。文字列候補は全角英数字記号を半角化し、前後空白と連続空白を正規化した canonical key で重複判定します。服薬候補は正規化した薬名、整数化した用量、小文字化した単位を組み合わせた canonical key で重複判定します。
 
 ### アクセス制御
 
