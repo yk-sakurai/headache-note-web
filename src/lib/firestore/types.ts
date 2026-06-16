@@ -1,5 +1,6 @@
 import { Timestamp } from "firebase/firestore";
 import { Timestamp as AdminTimestamp } from "firebase-admin/firestore";
+import type { SuggestionSetting } from "./suggestion-types";
 
 // User collection: users/{uid}
 export interface User {
@@ -218,5 +219,5 @@ export interface HeadacheLogPreference {
   visibleItems?: Record<string, boolean>;
   durationInputType?: HeadacheLogDurationInputType;
   hiddenRecommendedInputSetKeys?: string[];
-  suggestionSettings?: Record<string, unknown>;
+  suggestionSettings?: Record<string, SuggestionSetting>;
 }

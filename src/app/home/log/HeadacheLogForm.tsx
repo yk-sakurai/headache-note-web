@@ -17,9 +17,16 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import Button from "@/components/Button";
 import { sanitizeStringList } from "@/lib/firestore/repositories/sanitize";
+import {
+  createMedicationSuggestionValue,
+  createTextSuggestionValue,
+  type MergedSuggestionItem,
+  type SuggestionFieldKey,
+} from "@/lib/firestore/suggestion-types";
+import SuggestionChips from "./SuggestionChips";
 import { formatDateTimeLocal } from "./datetime";
 
 const MINUTES_IN_HOUR = 60;
@@ -164,6 +171,17 @@ const OPTIONAL_ITEM_KEY_ALIASES: Record<string, OptionalItemKey> = {
   triggers: "trigger",
   actions: "action",
   medications: "medication",
+};
+
+const OPTIONAL_ITEM_KEY_TO_SUGGESTION_FIELD_KEY: Partial<
+  Record<OptionalItemKey, SuggestionFieldKey>
+> = {
+  location: "locations",
+  type: "types",
+  trigger: "triggers",
+  associatedSymptoms: "associatedSymptoms",
+  action: "actions",
+  medication: "medications",
 };
 
 const normalizeOptionalItemKey = (key: string): OptionalItemKey | null => {
@@ -440,14 +458,43 @@ function MultiTextField({
   onChange,
   errors,
   placeholder,
+  suggestions,
+  editHref,
+  onSuggestionUsed,
+  onDuplicateSuggestion,
 }: {
   values: string[];
   onChange: (values: string[]) => void;
   errors?: string[];
   placeholder: string;
+  suggestions?: MergedSuggestionItem[];
+  editHref?: string;
+  onSuggestionUsed?: () => void;
+  onDuplicateSuggestion?: () => void;
 }) {
+  const handleSuggestionSelect = (item: MergedSuggestionItem) => {
+    if (item.value.type !== "text") return;
+    const existingKeys = values
+      .map((value) => createTextSuggestionValue(value)?.canonicalKey)
+      .filter((value): value is string => Boolean(value));
+
+    if (existingKeys.includes(item.value.canonicalKey)) {
+      onDuplicateSuggestion?.();
+      return;
+    }
+
+    onChange([...values, item.value.displayText]);
+    onSuggestionUsed?.();
+  };
+
   return (
     <div className="space-y-3">
+      <SuggestionChips
+        items={suggestions}
+        onSelect={handleSuggestionSelect}
+        onAddEmpty={() => onChange([...values, ""])}
+        editHref={editHref}
+      />
       {values.length === 0 ? (
         <p className="text-sm text-[color:var(--text-secondary)]">未入力です。</p>
       ) : (
@@ -478,9 +525,11 @@ function MultiTextField({
           </div>
         ))
       )}
-      <Button type="button" variant="secondary" onClick={() => onChange([...values, ""])}>
-        + 追加
-      </Button>
+      {!suggestions?.length && (
+        <Button type="button" variant="secondary" onClick={() => onChange([...values, ""])}>
+          + 追加
+        </Button>
+      )}
     </div>
   );
 }
@@ -589,6 +638,9 @@ function FormActionBar({
 export default function HeadacheLogForm({
   initial,
   initialPreference,
+  suggestions,
+  onSuggestionUsed,
+  logSuggestionEditBasePath,
   isNewLog = true,
   onSubmit,
   onDelete,
@@ -596,6 +648,9 @@ export default function HeadacheLogForm({
 }: {
   initial?: Partial<HeadacheLogFormData>;
   initialPreference?: HeadacheLogPreferenceInput;
+  suggestions?: Partial<Record<SuggestionFieldKey, MergedSuggestionItem[]>>;
+  onSuggestionUsed?: () => void;
+  logSuggestionEditBasePath?: string;
   isNewLog?: boolean;
   onSubmit: (
     data: HeadacheLogFormData,
@@ -661,6 +716,7 @@ export default function HeadacheLogForm({
   const [pinned, setPinned] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [duplicateMessage, setDuplicateMessage] = useState<string | null>(null);
   const [timingError, setTimingError] = useState("");
   const [durationError, setDurationError] = useState("");
   const [multiTextErrors, setMultiTextErrors] = useState({
@@ -683,6 +739,30 @@ export default function HeadacheLogForm({
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
+
+  useEffect(() => {
+    if (!duplicateMessage) return;
+    const timer = window.setTimeout(() => setDuplicateMessage(null), 2000);
+    return () => window.clearTimeout(timer);
+  }, [duplicateMessage]);
+
+  const showDuplicateSuggestionMessage = () => {
+    setDuplicateMessage("追加済みです");
+  };
+
+  const getSuggestionFieldKey = (key: OptionalItemKey) =>
+    OPTIONAL_ITEM_KEY_TO_SUGGESTION_FIELD_KEY[key];
+
+  const getSuggestions = (key: OptionalItemKey) => {
+    const fieldKey = getSuggestionFieldKey(key);
+    return fieldKey ? suggestions?.[fieldKey] : undefined;
+  };
+
+  const getSuggestionEditHref = (key: OptionalItemKey) => {
+    const fieldKey = getSuggestionFieldKey(key);
+    if (!fieldKey || !logSuggestionEditBasePath) return undefined;
+    return `${logSuggestionEditBasePath}/${fieldKey}`;
+  };
 
   const durationPreview = useMemo(() => {
     if (!durationEnabled || durationMode !== "end") return undefined;
@@ -843,11 +923,11 @@ export default function HeadacheLogForm({
     }
   };
 
-  const addAction = () => {
+  const addAction = (text = "") => {
     setActions((current) => [
       ...current,
       {
-        text: "",
+        text,
         takenAt: formatDateTimeLocal(new Date()),
         effectivenessEnabled: false,
         effectiveness: 0,
@@ -855,14 +935,22 @@ export default function HeadacheLogForm({
     ]);
   };
 
-  const addMedication = () => {
+  const addMedication = ({
+    name = "",
+    dosageText = "",
+    unit = "",
+  }: {
+    name?: string;
+    dosageText?: string;
+    unit?: string;
+  } = {}) => {
     setMedications((current) => [
       ...current,
       {
-        name: "",
+        name,
         takenAt: formatDateTimeLocal(new Date()),
-        dosageText: "",
-        unit: "",
+        dosageText,
+        unit,
         effectivenessEnabled: false,
         effectiveness: 0,
       },
@@ -883,6 +971,47 @@ export default function HeadacheLogForm({
 
   const toggleOptionalItem = (key: OptionalItemKey) => {
     setVisibilityMap((current) => ({ ...current, [key]: !current[key] }));
+  };
+
+  const handleActionSuggestionSelect = (item: MergedSuggestionItem) => {
+    if (item.value.type !== "text") return;
+    const existingKeys = actions
+      .map((action) => createTextSuggestionValue(action.text)?.canonicalKey)
+      .filter((value): value is string => Boolean(value));
+
+    if (existingKeys.includes(item.value.canonicalKey)) {
+      showDuplicateSuggestionMessage();
+      return;
+    }
+
+    addAction(item.value.displayText);
+    onSuggestionUsed?.();
+  };
+
+  const handleMedicationSuggestionSelect = (item: MergedSuggestionItem) => {
+    if (item.value.type !== "medication") return;
+    const existingKeys = medications
+      .map(
+        (medication) =>
+          createMedicationSuggestionValue({
+            name: medication.name,
+            dosage: medication.dosageText,
+            unit: medication.unit,
+          })?.canonicalKey
+      )
+      .filter((value): value is string => Boolean(value));
+
+    if (existingKeys.includes(item.value.canonicalKey)) {
+      showDuplicateSuggestionMessage();
+      return;
+    }
+
+    addMedication({
+      name: item.value.name,
+      dosageText: String(item.value.dosage),
+      unit: item.value.unit,
+    });
+    onSuggestionUsed?.();
   };
 
   const renderOptionalItem = (key: OptionalItemKey) => {
@@ -991,6 +1120,10 @@ export default function HeadacheLogForm({
             }}
             errors={multiTextErrors.locations}
             placeholder="こめかみ、頭全体 など"
+            suggestions={getSuggestions("location")}
+            editHref={getSuggestionEditHref("location")}
+            onSuggestionUsed={onSuggestionUsed}
+            onDuplicateSuggestion={showDuplicateSuggestionMessage}
           />
         );
       case "type":
@@ -1003,6 +1136,10 @@ export default function HeadacheLogForm({
             }}
             errors={multiTextErrors.types}
             placeholder="ズキズキ、締め付け など"
+            suggestions={getSuggestions("type")}
+            editHref={getSuggestionEditHref("type")}
+            onSuggestionUsed={onSuggestionUsed}
+            onDuplicateSuggestion={showDuplicateSuggestionMessage}
           />
         );
       case "trigger":
@@ -1015,6 +1152,10 @@ export default function HeadacheLogForm({
             }}
             errors={multiTextErrors.triggers}
             placeholder="寝不足、ストレス など"
+            suggestions={getSuggestions("trigger")}
+            editHref={getSuggestionEditHref("trigger")}
+            onSuggestionUsed={onSuggestionUsed}
+            onDuplicateSuggestion={showDuplicateSuggestionMessage}
           />
         );
       case "associatedSymptoms":
@@ -1027,11 +1168,21 @@ export default function HeadacheLogForm({
             }}
             errors={multiTextErrors.associatedSymptoms}
             placeholder="吐き気、めまい など"
+            suggestions={getSuggestions("associatedSymptoms")}
+            editHref={getSuggestionEditHref("associatedSymptoms")}
+            onSuggestionUsed={onSuggestionUsed}
+            onDuplicateSuggestion={showDuplicateSuggestionMessage}
           />
         );
       case "action":
         return (
           <div className="space-y-4">
+            <SuggestionChips
+              items={getSuggestions("action")}
+              onSelect={handleActionSuggestionSelect}
+              onAddEmpty={() => addAction()}
+              editHref={getSuggestionEditHref("action")}
+            />
             {actions.length === 0 ? (
               <p className="text-sm text-[color:var(--text-secondary)]">未入力です。</p>
             ) : (
@@ -1116,14 +1267,22 @@ export default function HeadacheLogForm({
                 </div>
               ))
             )}
-            <Button type="button" variant="secondary" onClick={addAction}>
-              + 追加
-            </Button>
+            {!getSuggestions("action")?.length && (
+              <Button type="button" variant="secondary" onClick={() => addAction()}>
+                + 追加
+              </Button>
+            )}
           </div>
         );
       case "medication":
         return (
           <div className="space-y-4">
+            <SuggestionChips
+              items={getSuggestions("medication")}
+              onSelect={handleMedicationSuggestionSelect}
+              onAddEmpty={() => addMedication()}
+              editHref={getSuggestionEditHref("medication")}
+            />
             {medications.length === 0 ? (
               <p className="text-sm text-[color:var(--text-secondary)]">未入力です。</p>
             ) : (
@@ -1247,9 +1406,11 @@ export default function HeadacheLogForm({
                 </div>
               ))
             )}
-            <Button type="button" variant="secondary" onClick={addMedication}>
-              + 追加
-            </Button>
+            {!getSuggestions("medication")?.length && (
+              <Button type="button" variant="secondary" onClick={() => addMedication()}>
+                + 追加
+              </Button>
+            )}
           </div>
         );
       case "note":
@@ -1327,6 +1488,12 @@ export default function HeadacheLogForm({
           </SortableContext>
         </DndContext>
       </div>
+
+      {duplicateMessage && (
+        <p className="mt-4 rounded border border-[color:var(--brand-mint-border)] bg-[color:var(--brand-primary-soft)] px-4 py-3 text-sm text-[color:var(--brand-primary-active)]">
+          {duplicateMessage}
+        </p>
+      )}
 
       {formError && (
         <p className="mt-4 rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

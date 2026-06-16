@@ -16,8 +16,10 @@ import {
   updateDoc,
   deleteDoc,
   Timestamp,
+  increment,
 } from "firebase/firestore";
 import type { FieldValue } from "firebase/firestore";
+import type { SuggestionFieldKey, SuggestionSetting } from "../suggestion-types";
 import {
   User,
   Subscription,
@@ -27,6 +29,7 @@ import {
   HeadacheLog,
   HeadacheLogPreference,
 } from "../types";
+import { suggestionSettingToFirestore } from "../suggestion-types";
 import { omitUndefinedDeep, sanitizeHeadacheLogStrings } from "./sanitize";
 
 export type HeadacheLogUpdateData = {
@@ -415,6 +418,85 @@ export class ClientHeadacheLogPreferenceRepository {
     } catch (error) {
       console.error("Error saving headache log preference:", error);
       throw new Error("頭痛記録フォーム設定の保存に失敗しました");
+    }
+  }
+
+  static async saveSuggestionSetting(
+    uid: string,
+    fieldKey: SuggestionFieldKey,
+    setting: SuggestionSetting
+  ): Promise<void> {
+    try {
+      const settingJson = omitUndefinedDeep(suggestionSettingToFirestore(setting));
+      const existing = await this.getByUserId(uid);
+
+      if (existing) {
+        const docRef = doc(db, "headache_log_preferences", existing.docId);
+        await updateDoc(docRef, {
+          [`suggestionSettings.${fieldKey}`]: settingJson,
+        });
+        return;
+      }
+
+      const collectionRef = collection(db, "headache_log_preferences");
+      await addDoc(collectionRef, {
+        userId: uid,
+        suggestionSettings: {
+          [fieldKey]: settingJson,
+        },
+      });
+    } catch (error) {
+      console.error("Error saving headache log suggestion setting:", error);
+      throw new Error("入力候補設定の保存に失敗しました");
+    }
+  }
+}
+
+/**
+ * UsageTracking Repository (Client-side)
+ */
+export class ClientUsageTrackingRepository {
+  static async trackSuggestionUsed(
+    uid: string,
+    sessionId: string,
+    isNewEntry: boolean
+  ): Promise<void> {
+    const mode = isNewEntry ? "create" : "update";
+
+    try {
+      const usageRef = doc(db, "users", uid, "usage_tracking", "headacheLogUsage");
+      const sessionRef = doc(
+        db,
+        "users",
+        uid,
+        "usage_tracking",
+        "headacheLogUsage",
+        "sessions",
+        sessionId
+      );
+
+      await Promise.all([
+        setDoc(
+          usageRef,
+          {
+            [mode]: {
+              suggestionUsed: increment(1),
+            },
+            lastEventAt: serverTimestamp(),
+          },
+          { merge: true }
+        ),
+        setDoc(
+          sessionRef,
+          {
+            mode,
+            suggestionUsedCount: increment(1),
+          },
+          { merge: true }
+        ),
+      ]);
+    } catch (error) {
+      console.warn("Error tracking suggestion usage:", error);
     }
   }
 }
