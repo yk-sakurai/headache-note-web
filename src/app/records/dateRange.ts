@@ -1,9 +1,11 @@
-const TOKYO_OFFSET_MS = 9 * 60 * 60 * 1000;
+import {
+  getTokyoDateRangeForDateKey,
+  TOKYO_OFFSET_MS,
+  toDatetimeLocalValue,
+} from "@/lib/calendar/calendarUtils";
+
 const DATETIME_LOCAL_PATTERN =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/;
-
-const toDatetimeLocalValue = (millis: number) =>
-  new Date(millis + TOKYO_OFFSET_MS).toISOString().slice(0, 16);
 
 export type DateRangeInput = {
   start: string;
@@ -25,6 +27,19 @@ export const getDefaultTokyoDateRange = (now = new Date()) => {
     endMs,
     start: toDatetimeLocalValue(startMs),
     end: toDatetimeLocalValue(endMs),
+  };
+};
+
+export const getTokyoDateRangeForDate = (dateKey: string) => {
+  const range = getTokyoDateRangeForDateKey(dateKey);
+  if (!range) {
+    return null;
+  }
+
+  return {
+    ...range,
+    start: toDatetimeLocalValue(range.startMs),
+    end: toDatetimeLocalValue(range.endMs),
   };
 };
 

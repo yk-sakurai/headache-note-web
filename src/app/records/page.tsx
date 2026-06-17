@@ -5,11 +5,20 @@ import { SESSION_COOKIE_NAME } from "@/lib/constants";
 import { adminAuth } from "@/lib/firebase/admin";
 import { HeadacheLogRepository } from "@/lib/firestore/repositories/server";
 import { toSerializableHeadacheLog } from "@/lib/firestore/serializeHeadacheLog";
-import { getDefaultTokyoDateRange } from "./dateRange";
+import {
+  getDefaultTokyoDateRange,
+  getTokyoDateRangeForDate,
+} from "./dateRange";
 import RecordListClient from "./RecordListClient";
 import RecordsNotice from "./RecordsNotice";
 
-export default async function RecordsPage() {
+type RecordsPageProps = {
+  searchParams?: Promise<{
+    date?: string | string[];
+  }>;
+};
+
+export default async function RecordsPage({ searchParams }: RecordsPageProps) {
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)?.value;
 
@@ -26,7 +35,14 @@ export default async function RecordsPage() {
     redirect("/login");
   }
 
-  const range = getDefaultTokyoDateRange();
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const dateParam = Array.isArray(resolvedSearchParams.date)
+    ? resolvedSearchParams.date[0]
+    : resolvedSearchParams.date;
+  const range =
+    typeof dateParam === "string"
+      ? getTokyoDateRangeForDate(dateParam) ?? getDefaultTokyoDateRange()
+      : getDefaultTokyoDateRange();
   const logs = await HeadacheLogRepository.listLogsInRange(
     uid,
     range.startMs,
