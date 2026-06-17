@@ -17,6 +17,7 @@ const preLoginNavItems = [
 const loggedInNavItems = [
   { href: "/home", label: "ホーム" },
   { href: "/records", label: "記録" },
+  { href: "/reports", label: "レポート" },
   { href: "/account", label: "アカウント" },
 ];
 
