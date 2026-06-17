@@ -38,12 +38,6 @@ export async function middleware(req: NextRequest) {
     return res;
   }
 
-  if (pathname === "/home") {
-    const url = req.nextUrl.clone();
-    url.pathname = "/records";
-    return NextResponse.redirect(url);
-  }
-
   if (!isProtectedPath(pathname)) {
     return NextResponse.next();
   }
