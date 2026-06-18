@@ -10,7 +10,6 @@ import ConfirmDialog from "./ConfirmDialog";
 
 const preLoginNavItems = [
   { href: "/#features", label: "できること" },
-  { href: "/pricing", label: "料金" },
   { href: "/#faq", label: "よくある質問" },
 ];
 
@@ -70,14 +69,15 @@ export default function Header() {
   }
 
   async function handleConfirmLogout() {
-    setShowLogoutDialog(false);
     try {
       setLoading(true);
       await signOut();
       await fetch("/api/auth/session-logout", { method: "POST" });
+      setShowLogoutDialog(false);
       router.push("/");
     } catch (error) {
       console.error("ログアウトエラー:", error);
+      setShowLogoutDialog(false);
     } finally {
       setLoading(false);
       setMenuOpen(false);
@@ -226,6 +226,9 @@ export default function Header() {
         cancelText="キャンセル"
         onConfirm={handleConfirmLogout}
         onCancel={handleCancelLogout}
+        showBrand
+        loading={loading}
+        loadingText="ログアウト中..."
       />
     </>
   );
