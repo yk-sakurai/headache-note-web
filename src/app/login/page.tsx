@@ -1,6 +1,7 @@
 "use client";
 import { useState, FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Image from "next/image";
 import Link from "next/link";
 import { signInWithEmailPassword, signOut } from "@/lib/firebase/auth.client";
 
@@ -84,87 +85,114 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6">
-      <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4">
-        <h1 className="text-xl font-semibold text-center">ログイン</h1>
-
-        {error && (
-          <div
-            role="alert"
-            className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2"
-          >
-            {error}
-          </div>
-        )}
-
-        <div className="space-y-1">
-          <label htmlFor="email" className="block text-sm">
-            メールアドレス
-          </label>
-          <input
-            id="email"
-            type="email"
-            autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring focus:ring-blue-200"
-            required
-          />
-        </div>
-
-        <div className="space-y-1">
-          <label htmlFor="password" className="block text-sm">
-            パスワード
-          </label>
-          <input
-            id="password"
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring focus:ring-blue-200"
-            required
-          />
-        </div>
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full h-10 rounded bg-[color:var(--brand-primary)] text-[color:var(--brand-on-primary)] text-sm font-medium disabled:opacity-60"
+    <main className="min-h-dvh bg-[color:var(--brand-mint-bg)] px-5 py-8 text-[color:var(--text-primary)] sm:px-6">
+      <div className="mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-[520px] items-center justify-center">
+        <form
+          onSubmit={handleSubmit}
+          className="w-full rounded-lg border border-[color:var(--brand-mint-border)] bg-[color:var(--surface)] px-5 py-7 shadow-[0_10px_30px_rgb(23_33_29_/_0.08)] sm:px-8 sm:py-8"
         >
-          {loading ? "送信中..." : "送信"}
-        </button>
+          <div className="flex flex-col items-center text-center">
+            <div className="flex items-center justify-center gap-3 text-[color:var(--brand-primary)]">
+              <Image
+                src="/brand/logo-mark.svg"
+                alt=""
+                width={44}
+                height={44}
+                className="h-10 w-10"
+                priority
+                aria-hidden="true"
+              />
+              <span className="text-2xl font-semibold">頭痛ノート</span>
+            </div>
+            <h1 className="mt-7 text-2xl font-semibold tracking-normal">
+              ログイン
+            </h1>
+          </div>
 
-        {needsVerification && (
-          <div
-            role="alert"
-            className="rounded border border-[color:var(--brand-mint-border)] bg-[color:var(--brand-primary-soft)] px-3 py-3 text-sm leading-6 text-[color:var(--text-primary)]"
-          >
-            <p>メールアドレスの確認が必要です。</p>
-            <Link
-              href="/resend-verification"
-              className="mt-2 inline-block font-medium text-[color:var(--brand-primary-active)] hover:underline"
+          {error && (
+            <div
+              role="alert"
+              className="mt-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700"
             >
-              確認メールを再送する
+              {error}
+            </div>
+          )}
+
+          <div className="mt-7 space-y-5">
+            <div className="space-y-2">
+              <label htmlFor="email" className="block text-sm font-semibold">
+                メールアドレス
+              </label>
+              <input
+                id="email"
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="h-12 w-full rounded border border-[color:var(--border)] bg-white px-4 text-base text-[color:var(--text-primary)] outline-none calm-transition placeholder:text-[color:var(--text-muted)] focus:border-[color:var(--brand-primary)] focus:ring-2 focus:ring-[color:var(--brand-primary-soft)]"
+                placeholder="example@example.com"
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="password" className="block text-sm font-semibold">
+                パスワード
+              </label>
+              <input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="h-12 w-full rounded border border-[color:var(--border)] bg-white px-4 text-base text-[color:var(--text-primary)] outline-none calm-transition focus:border-[color:var(--brand-primary)] focus:ring-2 focus:ring-[color:var(--brand-primary-soft)]"
+                required
+              />
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="mt-6 flex h-12 w-full items-center justify-center rounded bg-[color:var(--brand-primary)] px-5 text-base font-semibold text-[color:var(--brand-on-primary)] calm-transition hover:bg-[color:var(--brand-primary-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-primary)] focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
+          >
+            {loading ? "ログイン中..." : "ログイン"}
+          </button>
+
+          {needsVerification && (
+            <div
+              role="alert"
+              className="mt-5 rounded-lg border border-[color:var(--brand-mint-border)] bg-[color:var(--brand-primary-soft)] px-4 py-4 text-sm leading-6 text-[color:var(--text-primary)]"
+            >
+              <p>メールアドレスの確認が済んでいません。</p>
+              <p className="mt-1 text-[color:var(--text-secondary)]">
+                登録時に届いた確認メールをご確認ください。
+              </p>
+            </div>
+          )}
+
+          <div className="mt-6 flex flex-col items-center gap-3 text-sm">
+            <Link
+              href="/password-reset"
+              className="font-medium text-[color:var(--brand-primary-active)] underline-offset-4 calm-transition hover:underline"
+            >
+              パスワードをお忘れですか？
+            </Link>
+            <Link
+              href="/signup"
+              className="font-medium text-[color:var(--brand-primary-active)] underline-offset-4 calm-transition hover:underline"
+            >
+              ユーザー登録はこちら
+            </Link>
+            <Link
+              href="/"
+              className="font-medium text-[color:var(--brand-primary-active)] underline-offset-4 calm-transition hover:underline"
+            >
+              ホームに戻る
             </Link>
           </div>
-        )}
-
-        <div className="flex flex-col items-center gap-3 text-center">
-          <Link
-            href="/password-reset"
-            className="inline-block text-sm font-medium text-[color:var(--brand-primary-active)] hover:underline"
-          >
-            パスワードをお忘れですか？
-          </Link>
-          <Link
-            href="/"
-            className="inline-block text-sm text-[color:var(--brand-primary-active)] hover:underline"
-          >
-            ホームに戻る
-          </Link>
-        </div>
-      </form>
-    </div>
+        </form>
+      </div>
+    </main>
   );
 }

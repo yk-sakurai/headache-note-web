@@ -78,9 +78,6 @@ export default function PasswordResetPage() {
               <p className="mt-2 text-[color:var(--text-secondary)]">
                 メールが届かない場合は、入力内容や迷惑メールフォルダをご確認ください。
               </p>
-              <p className="mt-2 text-[color:var(--text-secondary)]">
-                メールアドレスの確認がまだの場合は、再設定後に確認メールを再送できます。
-              </p>
             </div>
           ) : (
             <form onSubmit={handleSubmit} noValidate className="mt-7 space-y-5">
