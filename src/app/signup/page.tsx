@@ -178,6 +178,16 @@ export default function SignupPage() {
             >
               OK
             </button>
+            <p className="mt-5 text-sm leading-6 text-[color:var(--text-secondary)]">
+              確認メールが届かない場合は、
+              <Link
+                href="/resend-verification"
+                className="font-medium text-[color:var(--brand-primary-active)] underline-offset-4 calm-transition hover:underline"
+              >
+                確認メールを再送する
+              </Link>
+              。
+            </p>
           </section>
         </div>
       </main>
