@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { APP_VERSION } from "@/lib/constants";
 import WithdrawalRow from "./WithdrawalRow";
 
 export default function ProfileMenu({
@@ -52,6 +53,12 @@ export default function ProfileMenu({
             />
           </div>
         </section>
+
+        {APP_VERSION && (
+          <p className="mt-8 text-center text-sm text-[color:var(--text-muted)]">
+            アプリのバージョン {APP_VERSION}
+          </p>
+        )}
       </div>
     </main>
   );
