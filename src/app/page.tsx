@@ -133,11 +133,8 @@ export default function Home() {
             <a className="pr-6 transition hover:text-[#008F6D] md:px-6 md:pl-0" href="/terms">
               利用規約
             </a>
-            <a className="pr-6 transition hover:text-[#008F6D] md:px-6" href="/privacy">
+            <a className="pr-6 transition hover:text-[#008F6D] md:px-6 md:pr-0" href="/privacy">
               プライバシーポリシー
-            </a>
-            <a className="transition hover:text-[#008F6D] md:px-6 md:pr-0" href="/contact">
-              お問い合わせ
             </a>
           </nav>
         </div>
