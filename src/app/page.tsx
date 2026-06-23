@@ -307,12 +307,12 @@ function RecordPreview() {
               </div>
             ))}
           </div>
-          <button
-            type="button"
-            className="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-[#00A67E] px-4 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(0,166,126,0.16)] transition hover:bg-[#008F6D] focus:outline-none focus:ring-2 focus:ring-[#00A67E] focus:ring-offset-2"
+          <div
+            aria-hidden="true"
+            className="mt-4 inline-flex min-h-11 w-full cursor-default select-none items-center justify-center rounded-lg bg-[#00A67E] px-4 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(0,166,126,0.16)]"
           >
             + 新しく記録する
-          </button>
+          </div>
         </aside>
       </div>
     </section>
