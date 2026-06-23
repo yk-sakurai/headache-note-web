@@ -40,11 +40,11 @@ export function LegalPage({ title, children }: LegalPageProps) {
             <p className="mt-2">© 2026 頭痛ノート</p>
           </div>
           <nav aria-label="フッター" className="flex flex-wrap gap-y-3 md:divide-x md:divide-[color:var(--border)] md:justify-end">
-            <Link className="pr-6 calm-transition hover:text-[color:var(--brand-primary-active)] md:px-6 md:pl-0" href="/privacy">
-              プライバシーポリシー
-            </Link>
-            <Link className="pr-6 calm-transition hover:text-[color:var(--brand-primary-active)] md:px-6" href="/terms">
+            <Link className="pr-6 calm-transition hover:text-[color:var(--brand-primary-active)] md:px-6 md:pl-0" href="/terms">
               利用規約
+            </Link>
+            <Link className="pr-6 calm-transition hover:text-[color:var(--brand-primary-active)] md:px-6" href="/privacy">
+              プライバシーポリシー
             </Link>
             <Link className="calm-transition hover:text-[color:var(--brand-primary-active)] md:px-6 md:pr-0" href="/contact">
               お問い合わせ

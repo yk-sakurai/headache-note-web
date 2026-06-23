@@ -130,11 +130,11 @@ export default function Home() {
             <p className="mt-2">© 2026 頭痛ノート</p>
           </div>
           <nav aria-label="フッター" className="flex flex-wrap gap-y-3 md:divide-x md:divide-[#DCE9E4] md:justify-end">
-            <a className="pr-6 transition hover:text-[#008F6D] md:px-6 md:pl-0" href="/privacy">
-              プライバシーポリシー
-            </a>
-            <a className="pr-6 transition hover:text-[#008F6D] md:px-6" href="/terms">
+            <a className="pr-6 transition hover:text-[#008F6D] md:px-6 md:pl-0" href="/terms">
               利用規約
+            </a>
+            <a className="pr-6 transition hover:text-[#008F6D] md:px-6" href="/privacy">
+              プライバシーポリシー
             </a>
             <a className="transition hover:text-[#008F6D] md:px-6 md:pr-0" href="/contact">
               お問い合わせ
