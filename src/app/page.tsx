@@ -130,14 +130,11 @@ export default function Home() {
             <p className="mt-2">© 2026 頭痛ノート</p>
           </div>
           <nav aria-label="フッター" className="flex flex-wrap gap-y-3 md:divide-x md:divide-[#DCE9E4] md:justify-end">
-            <a className="pr-6 transition hover:text-[#008F6D] md:px-6 md:pl-0" href="/privacy">
-              プライバシーポリシー
-            </a>
-            <a className="pr-6 transition hover:text-[#008F6D] md:px-6" href="/terms">
+            <a className="pr-6 transition hover:text-[#008F6D] md:px-6 md:pl-0" href="/terms">
               利用規約
             </a>
-            <a className="transition hover:text-[#008F6D] md:px-6 md:pr-0" href="/contact">
-              お問い合わせ
+            <a className="pr-6 transition hover:text-[#008F6D] md:px-6 md:pr-0" href="/privacy">
+              プライバシーポリシー
             </a>
           </nav>
         </div>
@@ -166,7 +163,7 @@ const previewCalendarDays: PreviewCalendarDay[] = [
   { day: "8" },
   { day: "9", intensity: 5, tone: "medium" },
   { day: "10" },
-  { day: "11", intensity: 7, tone: "high", today: true },
+  { day: "11", intensity: 7, tone: "high" },
   { day: "12", intensity: 2, tone: "low" },
   { day: "13" },
   { day: "14", intensity: 5, tone: "medium" },
@@ -185,7 +182,7 @@ const previewCalendarDays: PreviewCalendarDay[] = [
   { day: "27" },
   { day: "28", tone: "unknown" },
   { day: "29" },
-  { day: "30", intensity: 5, tone: "medium" },
+  { day: "30", intensity: 5, tone: "medium", today: true },
   { day: "1", muted: true },
   { day: "2", muted: true },
   { day: "3", muted: true },
@@ -310,12 +307,12 @@ function RecordPreview() {
               </div>
             ))}
           </div>
-          <button
-            type="button"
-            className="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-[#00A67E] px-4 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(0,166,126,0.16)] transition hover:bg-[#008F6D] focus:outline-none focus:ring-2 focus:ring-[#00A67E] focus:ring-offset-2"
+          <div
+            aria-hidden="true"
+            className="mt-4 inline-flex min-h-11 w-full cursor-default select-none items-center justify-center rounded-lg bg-[#00A67E] px-4 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(0,166,126,0.16)]"
           >
             + 新しく記録する
-          </button>
+          </div>
         </aside>
       </div>
     </section>
