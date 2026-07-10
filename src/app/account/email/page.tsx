@@ -1,14 +1,13 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   observeAuthState,
   reauthenticateWithPassword,
-  signOut,
   updateUserEmailWithVerification,
 } from "@/lib/firebase/auth.client";
+import { validatePassword } from "@/lib/validation/password";
 
 function getAuthErrorCode(error: unknown): string {
   return typeof (error as { code?: string })?.code === "string"
@@ -36,28 +35,21 @@ function mapAccountChangeErrorToMessage(code: string): string {
   }
 }
 
-async function clearSession() {
-  try {
-    await signOut();
-  } catch {
-    // Firebase Auth の状態に関わらず、SSR セッションの終了を優先する。
-  }
-
-  await fetch("/api/auth/session-logout", { method: "POST" }).catch(() => null);
-}
-
 export default function AccountEmailPage() {
-  const router = useRouter();
   const [authReady, setAuthReady] = useState(false);
   const [currentEmail, setCurrentEmail] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
+  const [passwordTouched, setPasswordTouched] = useState(false);
   const [formAlert, setFormAlert] = useState("");
   const [fieldError, setFieldError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [redirectingToLogin, setRedirectingToLogin] = useState(false);
   const [view, setView] = useState<"form" | "completed">("form");
   const authUnavailable = authReady && !currentEmail;
+  const passwordError = useMemo(
+    () => (passwordTouched ? validatePassword(currentPassword) : null),
+    [currentPassword, passwordTouched]
+  );
 
   useEffect(() => {
     return observeAuthState((user) => {
@@ -72,14 +64,14 @@ export default function AccountEmailPage() {
     const trimmedEmail = newEmail.trim();
     setFormAlert("");
     setFieldError("");
+    setPasswordTouched(true);
 
     if (!trimmedEmail) {
       setFieldError("新しいメールアドレスを入力してください。");
       return;
     }
 
-    if (!currentPassword) {
-      setFormAlert("現在のパスワードを入力してください。");
+    if (validatePassword(currentPassword)) {
       return;
     }
 
@@ -105,12 +97,6 @@ export default function AccountEmailPage() {
     }
   }
 
-  async function handleLoginClick() {
-    setRedirectingToLogin(true);
-    await clearSession();
-    router.replace("/login");
-  }
-
   if (view === "completed") {
     return (
       <main className="min-h-screen bg-[color:var(--brand-mint-bg)] px-5 py-10 text-[color:var(--text-primary)]">
@@ -119,18 +105,21 @@ export default function AccountEmailPage() {
             確認メールを送信しました
           </h1>
           <p className="mt-4 text-sm leading-7 text-[color:var(--text-secondary)]">
-            新しいメールアドレス宛のメールをご確認ください。
+            新しいメールアドレス宛に確認メールをお送りしました。
             <br />
-            確認後、新しいメールアドレスでログインできます。
+            メール内のリンクを開くと、変更が完了します。
           </p>
-          <button
-            type="button"
-            onClick={handleLoginClick}
-            disabled={redirectingToLogin}
-            className="mt-7 flex h-12 w-full items-center justify-center rounded bg-[color:var(--brand-primary)] px-5 text-base font-semibold text-[color:var(--brand-on-primary)] calm-transition hover:bg-[color:var(--brand-primary-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-primary)] focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
+          <p className="mt-4 text-sm leading-7 text-[color:var(--text-secondary)]">
+            変更が完了すると安全のため自動的にログアウトされます。その後は新しいメールアドレスでログインしてください。
+            <br />
+            なお、リンクを開くまでは現在のメールアドレスのままご利用いただけます。
+          </p>
+          <Link
+            href="/account"
+            className="mt-7 flex h-12 w-full items-center justify-center rounded bg-[color:var(--brand-primary)] px-5 text-base font-semibold text-[color:var(--brand-on-primary)] calm-transition hover:bg-[color:var(--brand-primary-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-primary)] focus-visible:ring-offset-2"
           >
-            {redirectingToLogin ? "処理中..." : "ログイン画面へ"}
-          </button>
+            アカウントへ戻る
+          </Link>
         </section>
       </main>
     );
@@ -212,10 +201,21 @@ export default function AccountEmailPage() {
               type="password"
               autoComplete="current-password"
               value={currentPassword}
-              onChange={(event) => setCurrentPassword(event.target.value)}
-              className="h-12 w-full rounded border border-[color:var(--border)] bg-white px-4 text-base text-[color:var(--text-primary)] outline-none calm-transition focus:border-[color:var(--brand-primary)] focus:ring-2 focus:ring-[color:var(--brand-primary-soft)]"
+              onChange={(event) => {
+                setCurrentPassword(event.target.value);
+                setPasswordTouched(true);
+              }}
+              onBlur={() => setPasswordTouched(true)}
+              aria-invalid={passwordError ? "true" : "false"}
+              aria-describedby={passwordError ? "current-password-error" : undefined}
+              className="h-12 w-full rounded border border-[color:var(--border)] bg-white px-4 text-base text-[color:var(--text-primary)] outline-none calm-transition focus:border-[color:var(--brand-primary)] focus:ring-2 focus:ring-[color:var(--brand-primary-soft)] aria-[invalid=true]:border-red-300 aria-[invalid=true]:focus:ring-red-100"
               disabled={!authReady || authUnavailable || loading}
             />
+            {passwordError && (
+              <p id="current-password-error" className="text-sm leading-6 text-red-600">
+                {passwordError}
+              </p>
+            )}
           </div>
         </div>
 

@@ -1,9 +1,10 @@
 "use client";
-import { useState, FormEvent } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { signInWithEmailPassword, signOut } from "@/lib/firebase/auth.client";
+import { validatePassword } from "@/lib/validation/password";
 
 function mapAuthErrorToMessage(code: string): string {
   switch (code) {
@@ -39,14 +40,25 @@ export default function LoginPage() {
   const redirectTo = rawRedirect && rawRedirect.startsWith("/") ? rawRedirect : "/home";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordTouched, setPasswordTouched] = useState(false);
   const [error, setError] = useState("");
   const [needsVerification, setNeedsVerification] = useState(false);
   const [loading, setLoading] = useState(false);
+  const passwordError = useMemo(
+    () => (passwordTouched ? validatePassword(password) : null),
+    [password, passwordTouched]
+  );
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError("");
     setNeedsVerification(false);
+    setPasswordTouched(true);
+
+    if (validatePassword(password)) {
+      return;
+    }
+
     setLoading(true);
     try {
       const credential = await signInWithEmailPassword(email, password);
@@ -144,10 +156,21 @@ export default function LoginPage() {
                 type="password"
                 autoComplete="current-password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="h-12 w-full rounded border border-[color:var(--border)] bg-white px-4 text-base text-[color:var(--text-primary)] outline-none calm-transition focus:border-[color:var(--brand-primary)] focus:ring-2 focus:ring-[color:var(--brand-primary-soft)]"
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setPasswordTouched(true);
+                }}
+                onBlur={() => setPasswordTouched(true)}
+                aria-invalid={passwordError ? "true" : "false"}
+                aria-describedby={passwordError ? "password-error" : undefined}
+                className="h-12 w-full rounded border border-[color:var(--border)] bg-white px-4 text-base text-[color:var(--text-primary)] outline-none calm-transition focus:border-[color:var(--brand-primary)] focus:ring-2 focus:ring-[color:var(--brand-primary-soft)] aria-[invalid=true]:border-red-300 aria-[invalid=true]:focus:ring-red-100"
                 required
               />
+              {passwordError && (
+                <p id="password-error" className="text-sm leading-6 text-red-600">
+                  {passwordError}
+                </p>
+              )}
             </div>
           </div>
 

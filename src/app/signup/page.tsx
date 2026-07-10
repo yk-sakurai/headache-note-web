@@ -399,9 +399,29 @@ function AgreementCheckbox({
       <p>
         <Link
           href={agreementHref}
-          className="font-semibold text-[color:var(--brand-primary-active)] underline underline-offset-4 calm-transition hover:text-[color:var(--brand-primary-hover)]"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`${agreementName}（別タブで開きます）`}
+          className="inline-flex items-center gap-1 font-semibold text-[color:var(--brand-primary-active)] underline underline-offset-4 calm-transition hover:text-[color:var(--brand-primary-hover)]"
         >
           {agreementName}
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 16 16"
+            fill="none"
+            className="h-[0.75em] w-[0.75em] shrink-0 stroke-current stroke-[2]"
+          >
+            <path
+              d="m5 11 6-6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M7 5h4v4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
         </Link>
         に同意します
       </p>
