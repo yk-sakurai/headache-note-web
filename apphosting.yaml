@@ -10,20 +10,20 @@ runConfig:
 env:
   # --- Firebase Web SDK (dev プロジェクトの値) ---
   - variable: NEXT_PUBLIC_FIREBASE_API_KEY
-    value: "AIzaSyBwwgCpBcgPNlpeapJUOxFyqxRj7Bxq8nM"
+    secret: NEXT_PUBLIC_FIREBASE_API_KEY
     availability: [BUILD, RUNTIME]
   - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
-    value: "headache-note-dev-e8cef.firebaseapp.com"
+    secret: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
     availability: [BUILD, RUNTIME]
   - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
-    value: "headache-note-dev-e8cef"
+    secret: NEXT_PUBLIC_FIREBASE_PROJECT_ID
     availability: [BUILD, RUNTIME]
   - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
-    value: "headache-note-dev-e8cef.appspot.com"
+    secret: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
     availability: [BUILD, RUNTIME]
   - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
-    value: "413176733369"
+    secret: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
     availability: [BUILD, RUNTIME]
   - variable: NEXT_PUBLIC_FIREBASE_APP_ID
-    value: "1:413176733369:web:b927f605894781aa7ac568"
+    secret: NEXT_PUBLIC_FIREBASE_APP_ID
     availability: [BUILD, RUNTIME]
