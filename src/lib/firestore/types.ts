@@ -1,6 +1,5 @@
 import { Timestamp } from "firebase/firestore";
 import { Timestamp as AdminTimestamp } from "firebase-admin/firestore";
-import type { SuggestionSetting } from "./suggestion-types";
 
 // User collection: users/{uid}
 export interface User {
@@ -219,5 +218,12 @@ export interface HeadacheLogPreference {
   visibleItems?: Record<string, boolean>;
   durationInputType?: HeadacheLogDurationInputType;
   hiddenRecommendedInputSetKeys?: string[];
-  suggestionSettings?: Record<string, SuggestionSetting>;
+  /**
+   * 入力候補設定のコンテナー。
+   *
+   * Firestore から取得した未検証のデータであり、配列・文字列・null 等も返りうる。
+   * 表示用は `getSuggestionSetting`、編集用は `readSuggestionSettingForEdit` を通して読む。
+   * 保存スキーマと取得時の型は別物として扱う。
+   */
+  suggestionSettings?: unknown;
 }

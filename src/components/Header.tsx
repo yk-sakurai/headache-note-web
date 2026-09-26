@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -7,6 +7,7 @@ import { onAuthStateChanged, User } from "firebase/auth";
 import { auth, signOut } from "@/lib/firebase/auth.client";
 import Button from "./Button";
 import ConfirmDialog from "./ConfirmDialog";
+import { useSuggestionNavigation } from "./SuggestionNavigationProvider";
 
 const preLoginNavItems = [
   { href: "/#features", label: "できること" },
@@ -37,10 +38,18 @@ function LogoMark() {
 export default function Header() {
   const router = useRouter();
   const pathname = usePathname();
+  const nav = useSuggestionNavigation();
+  const { invalidateForUser } = nav;
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(false);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  // ログアウトを確定した後で、候補編集の未保存3択を通してから実際にサインアウトする。
+  const [pendingLogout, setPendingLogout] = useState(false);
+  const leaveCountsRef = useRef({
+    approved: nav.leaveApprovedCount,
+    cancelled: nav.leaveCancelledCount,
+  });
 
   const isAuthEntryPage =
     pathname === "/signup" ||
@@ -56,9 +65,51 @@ export default function Header() {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setMenuOpen(false);
+      // uid 変更・ログアウトの確定で、退避した下書きを失効させる。
+      invalidateForUser(currentUser?.uid ?? null);
     });
     return () => unsubscribe();
-  }, [isAuthEntryPage]);
+    // nav 全体ではなく安定した関数だけに依存する（再購読のたびにメニューが閉じるのを避ける）。
+  }, [invalidateForUser, isAuthEntryPage]);
+
+  const performLogout = useCallback(async () => {
+    try {
+      setLoading(true);
+      await signOut();
+      await fetch("/api/auth/session-logout", { method: "POST" });
+      invalidateForUser(null);
+      setShowLogoutDialog(false);
+      router.push("/");
+    } catch (error) {
+      console.error("ログアウトエラー:", error);
+      setShowLogoutDialog(false);
+    } finally {
+      setLoading(false);
+      setMenuOpen(false);
+    }
+  }, [invalidateForUser, router]);
+
+  // 候補編集の3択の結果を待ってからサインアウトする。
+  // キャンセルされた場合はログアウト自体を中止し、候補の変更・往復はそのまま残す。
+  useEffect(() => {
+    if (!pendingLogout) {
+      leaveCountsRef.current = {
+        approved: nav.leaveApprovedCount,
+        cancelled: nav.leaveCancelledCount,
+      };
+      return;
+    }
+    if (nav.leaveCancelledCount !== leaveCountsRef.current.cancelled) {
+      leaveCountsRef.current.cancelled = nav.leaveCancelledCount;
+      setPendingLogout(false);
+      return;
+    }
+    if (nav.leaveApprovedCount !== leaveCountsRef.current.approved) {
+      leaveCountsRef.current.approved = nav.leaveApprovedCount;
+      setPendingLogout(false);
+      void performLogout();
+    }
+  }, [nav.leaveApprovedCount, nav.leaveCancelledCount, pendingLogout, performLogout]);
 
   if (isAuthEntryPage) {
     return null;
@@ -69,19 +120,14 @@ export default function Header() {
   }
 
   async function handleConfirmLogout() {
-    try {
-      setLoading(true);
-      await signOut();
-      await fetch("/api/auth/session-logout", { method: "POST" });
+    if (nav.hasUnsavedChanges) {
+      // ログアウトは確定済み。候補の未保存3択だけ先に通し、承認後にサインアウトする。
       setShowLogoutDialog(false);
-      router.push("/");
-    } catch (error) {
-      console.error("ログアウトエラー:", error);
-      setShowLogoutDialog(false);
-    } finally {
-      setLoading(false);
-      setMenuOpen(false);
+      setPendingLogout(true);
+      nav.requestLeave({ kind: "none" });
+      return;
     }
+    await performLogout();
   }
 
   function handleCancelLogout() {
