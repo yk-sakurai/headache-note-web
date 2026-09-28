@@ -8,6 +8,8 @@ type SuggestionChipsProps = {
   onSelect: (item: MergedSuggestionItem) => void;
   onAddEmpty: () => void;
   editHref?: string;
+  /** 同一タブの実際の遷移が確定したときだけ呼ばれる（修飾キー・中クリック・別タブでは呼ばない） */
+  onEditNavigate?: () => void;
 };
 
 const sourceLabel = (item: MergedSuggestionItem) => {
@@ -31,6 +33,7 @@ export default function SuggestionChips({
   onSelect,
   onAddEmpty,
   editHref,
+  onEditNavigate,
 }: SuggestionChipsProps) {
   if (!editHref && (!items || items.length === 0)) return null;
 
@@ -45,6 +48,11 @@ export default function SuggestionChips({
         {editHref && (
           <Link
             href={editHref}
+            onClick={(event) => {
+              if (event.defaultPrevented || event.button !== 0) return;
+              if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+              onEditNavigate?.();
+            }}
             className="text-xs font-medium text-[color:var(--brand-primary-active)] underline-offset-4 hover:underline"
           >
             編集

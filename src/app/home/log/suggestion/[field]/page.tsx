@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { isSuggestionFieldKey, type SuggestionFieldKey } from "@/lib/firestore/suggestion-types";
-import BackButton from "./BackButton";
 import SuggestionEditClient from "./SuggestionEditClient";
 
 const FIELD_LABELS: Record<SuggestionFieldKey, string> = {
@@ -13,6 +12,16 @@ const FIELD_LABELS: Record<SuggestionFieldKey, string> = {
   associatedSymptoms: "併発症状",
 };
 
+/**
+ * 候補編集画面のページ（Server Component）。
+ * ここで行うのは次の 2 つだけ:
+ *   1. URL の field が正しい項目名かチェックする（不正なら 404）
+ *   2. 項目名と表示ラベルを Client Component に渡す
+ *
+ * 見出しと画面上部の「戻る」ボタンは SuggestionEditClient 側でまとめて表示する。
+ * ここに置くと、戻るボタンと編集画面の間で関数（未保存確認など）を受け渡す必要が出るが、
+ * Server Component からは関数を渡せないため。
+ */
 export default async function SuggestionSettingPage({
   params,
 }: {
@@ -26,19 +35,7 @@ export default async function SuggestionSettingPage({
   return (
     <main className="min-h-screen bg-[color:var(--brand-mint-bg)] px-4 py-8 text-[color:var(--text-primary)] sm:px-6 lg:px-8">
       <div className="mx-auto max-w-3xl space-y-6">
-        <div className="space-y-3">
-          <BackButton />
-          <h1 className="text-3xl font-semibold tracking-normal">
-            {FIELD_LABELS[field]}の入力候補設定
-          </h1>
-        </div>
-        <Suspense
-          fallback={
-            <p className="rounded border border-[color:var(--brand-mint-border)] bg-white px-4 py-3 text-sm text-[color:var(--text-secondary)]">
-              読み込み中...
-            </p>
-          }
-        >
+        <Suspense fallback={null}>
           <SuggestionEditClient fieldKey={field} fieldLabel={FIELD_LABELS[field]} />
         </Suspense>
       </div>

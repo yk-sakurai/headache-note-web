@@ -19,7 +19,7 @@ import {
   increment,
 } from "firebase/firestore";
 import type { FieldValue } from "firebase/firestore";
-import type { SuggestionFieldKey, SuggestionSetting } from "../suggestion-types";
+import type { SuggestionFieldKey, SuggestionSourceLog } from "../suggestion-types";
 import {
   User,
   Subscription,
@@ -29,7 +29,12 @@ import {
   HeadacheLog,
   HeadacheLogPreference,
 } from "../types";
-import { suggestionSettingToFirestore } from "../suggestion-types";
+import { readRawSuggestionLog, readSuggestionSettingForEdit } from "../suggestion-types";
+import {
+  buildSuggestionSavePayload,
+  UNREADABLE_SETTING_MESSAGE,
+  type SuggestionEditorState,
+} from "../suggestion-editor";
 import { omitUndefinedDeep, sanitizeHeadacheLogStrings } from "./sanitize";
 
 export type HeadacheLogUpdateData = {
@@ -46,7 +51,7 @@ type HeadacheLogPreferenceSaveData = Pick<
 };
 
 /**
- * User Repository (Client-side)
+ * ユーザー情報の読み込み（ブラウザ用）
  */
 export class ClientUserRepository {
   static async getUser(uid: string): Promise<User | null> {
@@ -67,7 +72,7 @@ export class ClientUserRepository {
 }
 
 /**
- * Subscription Repository (Client-side)
+ * サブスクリプション（契約状態）の読み込み（ブラウザ用）
  */
 export class ClientSubscriptionRepository {
   static async getSubscription(uid: string): Promise<Subscription | null> {
@@ -88,7 +93,7 @@ export class ClientSubscriptionRepository {
 }
 
 /**
- * Invoice Repository (Client-side)
+ * 請求履歴の読み込み（ブラウザ用）
  */
 export class ClientInvoiceRepository {
   static async listInvoices(
@@ -132,7 +137,7 @@ export class ClientInvoiceRepository {
 }
 
 /**
- * CheckoutSession Repository (Client-side)
+ * 決済手続き（チェックアウト）の記録を作る（ブラウザ用）
  */
 export class ClientCheckoutSessionRepository {
   static async createSession(
@@ -153,7 +158,7 @@ export class ClientCheckoutSessionRepository {
 }
 
 /**
- * Device Repository (Client-side)
+ * 端末情報とプッシュ通知設定の読み書き（ブラウザ用）
  */
 export class ClientDeviceRepository {
   static async getDevice(
@@ -271,7 +276,7 @@ export class ClientDeviceRepository {
 }
 
 /**
- * HeadacheLog Repository (Client-side)
+ * 頭痛記録の読み書き（ブラウザ用）
  */
 export class ClientHeadacheLogRepository {
   static async listLogs(uid: string, limit: number = 50): Promise<HeadacheLog[]> {
@@ -313,6 +318,38 @@ export class ClientHeadacheLogRepository {
       );
     } catch (error) {
       console.error("Error listing headache logs in range:", error);
+      throw new Error("頭痛記録の取得に失敗しました");
+    }
+  }
+
+  /**
+   * 入力候補を集計するために、頭痛記録を「手を加えずそのまま」取得する。
+   *
+   * 検索条件（本人の記録・指定期間・新しい順）は `listLogsInRange` と同じ。
+   * ただし `sanitizeHeadacheLogStrings` による整形は行わないため、空白や全角/半角の違い、
+   * 同じ値の重複、薬と服薬量の組み合わせは保存されたままの形で返る。
+   * 各記録は `readRawSuggestionLog` で中身を確認し、集計に使えないものは除外する。
+   */
+  static async listLogsInRangeRaw(
+    uid: string,
+    startMs: number,
+    endMs: number
+  ): Promise<SuggestionSourceLog[]> {
+    try {
+      const logsRef = collection(db, "headache_logs");
+      const q = query(
+        logsRef,
+        where("userId", "==", uid),
+        where("timing", ">=", Timestamp.fromMillis(startMs)),
+        where("timing", "<=", Timestamp.fromMillis(endMs)),
+        orderBy("timing", "desc")
+      );
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.docs
+        .map((d) => readRawSuggestionLog(d.data()))
+        .filter((log): log is SuggestionSourceLog => log !== null);
+    } catch (error) {
+      console.error("Error listing headache logs in range (raw):", error);
       throw new Error("頭痛記録の取得に失敗しました");
     }
   }
@@ -371,7 +408,7 @@ export class ClientHeadacheLogRepository {
 }
 
 /**
- * HeadacheLogPreference Repository (Client-side)
+ * 頭痛記録フォームの設定（項目の並び順・表示・入力候補など）の読み書き（ブラウザ用）
  */
 export class ClientHeadacheLogPreferenceRepository {
   static async getByUserId(
@@ -421,19 +458,44 @@ export class ClientHeadacheLogPreferenceRepository {
     }
   }
 
+  /**
+   * 1 つの項目（fieldKey）について、入力候補の設定を保存する。
+   *
+   * - 保存前に入力内容をチェックし、件数の上限超過や入力ルール違反があればエラーにする
+   *   （はみ出した分を勝手に削って保存したことにはしない）。
+   * - 保存先を決めるため、最新の設定を読み直す。保存済みの設定が壊れていて読めない場合は、
+   *   上書きで消してしまわないよう保存を中止する。
+   * - 設定がすでにあれば、その項目の部分だけを更新する。まだなければ新しく作成する。
+   */
   static async saveSuggestionSetting(
     uid: string,
     fieldKey: SuggestionFieldKey,
-    setting: SuggestionSetting
+    state: SuggestionEditorState
   ): Promise<void> {
-    try {
-      const settingJson = omitUndefinedDeep(suggestionSettingToFirestore(setting));
-      const existing = await this.getByUserId(uid);
+    const payloadResult = buildSuggestionSavePayload(state);
+    if (!payloadResult.ok) {
+      throw new Error(payloadResult.errors[0]);
+    }
 
+    let existing: { docId: string; data: HeadacheLogPreference } | null;
+    try {
+      existing = await this.getByUserId(uid);
+    } catch (error) {
+      console.error("Error loading preference before saving suggestion setting:", error);
+      throw new Error("入力候補設定の保存に失敗しました");
+    }
+
+    // 画面で開いた後に別の端末などで設定が変わっている可能性があるため、保存直前にもう一度中身を確認する。
+    const latest = readSuggestionSettingForEdit(existing?.data.suggestionSettings, fieldKey);
+    if (latest.containerStatus === "invalid" || latest.fieldStatus === "invalid") {
+      throw new Error(UNREADABLE_SETTING_MESSAGE);
+    }
+
+    try {
       if (existing) {
         const docRef = doc(db, "headache_log_preferences", existing.docId);
         await updateDoc(docRef, {
-          [`suggestionSettings.${fieldKey}`]: settingJson,
+          [`suggestionSettings.${fieldKey}`]: payloadResult.payload.fieldPayload,
         });
         return;
       }
@@ -442,7 +504,7 @@ export class ClientHeadacheLogPreferenceRepository {
       await addDoc(collectionRef, {
         userId: uid,
         suggestionSettings: {
-          [fieldKey]: settingJson,
+          [fieldKey]: payloadResult.payload.fieldPayload,
         },
       });
     } catch (error) {
@@ -453,7 +515,7 @@ export class ClientHeadacheLogPreferenceRepository {
 }
 
 /**
- * UsageTracking Repository (Client-side)
+ * 利用状況の記録（ブラウザ用）
  */
 export class ClientUsageTrackingRepository {
   static async trackSuggestionUsed(

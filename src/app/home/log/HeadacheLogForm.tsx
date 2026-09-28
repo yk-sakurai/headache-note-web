@@ -17,9 +17,17 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import Button from "@/components/Button";
+import { useSuggestionNavigation } from "@/components/SuggestionNavigationProvider";
 import { sanitizeStringList } from "@/lib/firestore/repositories/sanitize";
+import {
+  MAX_ACTION_TEXT_LENGTH,
+  MAX_MEDICATION_NAME_LENGTH,
+  MAX_MEDICATION_UNIT_LENGTH,
+  MAX_MULTI_TEXT_LENGTH,
+  MAX_NOTE_LENGTH,
+} from "@/lib/headache-log-constraints";
 import {
   createMedicationSuggestionValue,
   createTextSuggestionValue,
@@ -27,16 +35,12 @@ import {
   type SuggestionFieldKey,
 } from "@/lib/firestore/suggestion-types";
 import SuggestionChips from "./SuggestionChips";
+import type { HeadacheLogFormSnapshot } from "./formDraftStore";
 import { formatDateTimeLocal } from "./datetime";
 
 const MINUTES_IN_HOUR = 60;
 const MINUTES_IN_DAY = MINUTES_IN_HOUR * 24;
 const MS_PER_MINUTE = 60 * 1000;
-const MAX_MULTI_TEXT_LENGTH = 50;
-const MAX_ACTION_TEXT_LENGTH = 50;
-const MAX_MEDICATION_NAME_LENGTH = 30;
-const MAX_MEDICATION_UNIT_LENGTH = 10;
-const MAX_NOTE_LENGTH = 500;
 
 const pad = (value: number) => String(value).padStart(2, "0");
 
@@ -460,6 +464,7 @@ function MultiTextField({
   placeholder,
   suggestions,
   editHref,
+  onEditNavigate,
   onSuggestionUsed,
   onDuplicateSuggestion,
 }: {
@@ -469,6 +474,7 @@ function MultiTextField({
   placeholder: string;
   suggestions?: MergedSuggestionItem[];
   editHref?: string;
+  onEditNavigate?: () => void;
   onSuggestionUsed?: () => void;
   onDuplicateSuggestion?: () => void;
 }) {
@@ -494,6 +500,7 @@ function MultiTextField({
         onSelect={handleSuggestionSelect}
         onAddEmpty={() => onChange([...values, ""])}
         editHref={editHref}
+        onEditNavigate={onEditNavigate}
       />
       {values.length === 0 ? (
         <p className="text-sm text-[color:var(--text-secondary)]">未入力です。</p>
@@ -590,6 +597,7 @@ function FormActionBar({
   hasDelete,
   onDelete,
   onPinnedChange,
+  onHeightChange,
 }: {
   pinned: boolean;
   submitting: boolean;
@@ -597,7 +605,25 @@ function FormActionBar({
   hasDelete: boolean;
   onDelete?: () => void;
   onPinnedChange: (next: boolean) => void;
+  /** 画面下に固定表示しているとき、バーの実際の高さ（ボタンの折り返しや iPhone 下部の余白も含む）を親に知らせる */
+  onHeightChange?: (height: number) => void;
 }) {
+  const barRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!pinned || !onHeightChange) return;
+    const element = barRef.current;
+    if (!element) return;
+    const update = () => onHeightChange(element.offsetHeight);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      onHeightChange(0);
+    };
+  }, [onHeightChange, pinned]);
+
   const controls = (
     <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-center">
       <Button type="submit" disabled={submitting} className="h-12 px-8 text-base">
@@ -629,7 +655,10 @@ function FormActionBar({
   }
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[color:var(--border-subtle)] bg-white/95 px-4 py-3 shadow-[0_-10px_30px_rgb(23_33_29_/_0.08)] backdrop-blur">
+    <div
+      ref={barRef}
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-[color:var(--border-subtle)] bg-white/95 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] shadow-[0_-10px_30px_rgb(23_33_29_/_0.08)] backdrop-blur"
+    >
       <div className="mx-auto flex max-w-6xl justify-center">{controls}</div>
     </div>
   );
@@ -645,6 +674,8 @@ export default function HeadacheLogForm({
   onSubmit,
   onDelete,
   submitLabel = "保存",
+  restoredSnapshot,
+  onSuggestionEditNavigate,
 }: {
   initial?: Partial<HeadacheLogFormData>;
   initialPreference?: HeadacheLogPreferenceInput;
@@ -658,62 +689,91 @@ export default function HeadacheLogForm({
   ) => Promise<void> | void;
   onDelete?: () => Promise<void> | void;
   submitLabel?: string;
+  /**
+   * 候補の編集画面から正しい手順で戻ってきたときだけ渡される、移動前の入力内容（19 項目）。
+   * 最初の表示で入力欄の初期値として使うだけで、表示した後に入力内容を上書きすることはない。
+   */
+  restoredSnapshot?: HeadacheLogFormSnapshot | null;
+  /** 同じタブで候補の編集画面へ移動する直前に呼ばれ、今の入力内容を一時保存できるように渡す */
+  onSuggestionEditNavigate?: (snapshot: HeadacheLogFormSnapshot) => void;
 }) {
+  // 戻る前の入力内容は、最初に受け取った値を覚えておいて使う。
+  // 一時保存からの削除は別の場所で行い、ここ（初期値を決める処理の中）では削除しない。
+  const restoredRef = useRef(restoredSnapshot ?? null);
+  const restored = restoredRef.current;
+  const { registerBottomBar } = useSuggestionNavigation();
   const initialTiming = splitDateTimeLocal(initial?.timing);
-  const [timingDate, setTimingDate] = useState(initialTiming.date);
-  const [timingTime, setTimingTime] = useState(initialTiming.time);
+  const [timingDate, setTimingDate] = useState(restored?.timingDate ?? initialTiming.date);
+  const [timingTime, setTimingTime] = useState(restored?.timingTime ?? initialTiming.time);
   const timing = combineDateTimeLocal(timingDate, timingTime);
-  const [intensity, setIntensity] = useState(initial?.intensity ?? 1);
+  const [intensity, setIntensity] = useState(restored?.intensity ?? initial?.intensity ?? 1);
   const initialDuration = initial?.duration;
-  const [durationEnabled, setDurationEnabled] = useState(initialDuration !== undefined);
-  const [durationMode, setDurationMode] = useState<"end" | "duration">(() =>
-    initialPreference?.durationInputType === "duration" ? "duration" : "end"
+  const [durationEnabled, setDurationEnabled] = useState(
+    restored?.durationEnabled ?? initialDuration !== undefined
   );
-  const [durationDays, setDurationDays] = useState(() =>
-    initialDuration === undefined ? "" : splitDurationToFields(initialDuration).days
-  );
-  const [durationHours, setDurationHours] = useState(() =>
-    initialDuration === undefined ? "" : splitDurationToFields(initialDuration).hours
-  );
-  const [durationMinutes, setDurationMinutes] = useState(() =>
-    initialDuration === undefined ? "" : splitDurationToFields(initialDuration).minutes
-  );
+  const [durationMode, setDurationMode] = useState<"end" | "duration">(() => {
+    if (restored) return restored.durationMode;
+    return initialPreference?.durationInputType === "duration" ? "duration" : "end";
+  });
+  const [durationDays, setDurationDays] = useState(() => {
+    if (restored) return restored.durationDays;
+    return initialDuration === undefined ? "" : splitDurationToFields(initialDuration).days;
+  });
+  const [durationHours, setDurationHours] = useState(() => {
+    if (restored) return restored.durationHours;
+    return initialDuration === undefined ? "" : splitDurationToFields(initialDuration).hours;
+  });
+  const [durationMinutes, setDurationMinutes] = useState(() => {
+    if (restored) return restored.durationMinutes;
+    return initialDuration === undefined ? "" : splitDurationToFields(initialDuration).minutes;
+  });
   const [endTiming, setEndTiming] = useState(() => {
+    if (restored) return restored.endTiming;
     if (initial?.timing && initialDuration !== undefined) {
       return addMinutesToLocalDateTime(initial.timing, initialDuration);
     }
     return addMinutesToLocalDateTime(timing, MINUTES_IN_HOUR);
   });
-  const [locations, setLocations] = useState(initial?.locations ?? []);
-  const [types, setTypes] = useState(initial?.types ?? []);
-  const [triggers, setTriggers] = useState(initial?.triggers ?? []);
-  const [associatedSymptoms, setAssociatedSymptoms] = useState(initial?.associatedSymptoms ?? []);
-  const [actions, setActions] = useState<ActionFormState[]>(() =>
-    (initial?.actions ?? []).map((action) => ({
+  const [locations, setLocations] = useState(restored?.locations ?? initial?.locations ?? []);
+  const [types, setTypes] = useState(restored?.types ?? initial?.types ?? []);
+  const [triggers, setTriggers] = useState(restored?.triggers ?? initial?.triggers ?? []);
+  const [associatedSymptoms, setAssociatedSymptoms] = useState(
+    restored?.associatedSymptoms ?? initial?.associatedSymptoms ?? []
+  );
+  const [actions, setActions] = useState<ActionFormState[]>(() => {
+    if (restored) return restored.actions.map((action) => ({ ...action }));
+    return (initial?.actions ?? []).map((action) => ({
       text: action.text,
       takenAt: action.takenAt,
       effectivenessEnabled: action.effectiveness !== undefined,
       effectiveness: action.effectiveness ?? 0,
-    }))
-  );
-  const [medications, setMedications] = useState<MedicationFormState[]>(() =>
-    (initial?.medications ?? []).map((medication) => ({
+    }));
+  });
+  const [medications, setMedications] = useState<MedicationFormState[]>(() => {
+    if (restored) return restored.medications.map((medication) => ({ ...medication }));
+    return (initial?.medications ?? []).map((medication) => ({
       name: medication.name,
       takenAt: medication.takenAt,
       dosageText: medication.dosage !== undefined ? String(medication.dosage) : "",
       unit: medication.unit,
       effectivenessEnabled: medication.effectiveness !== undefined,
       effectiveness: medication.effectiveness ?? 0,
-    }))
-  );
-  const [note, setNote] = useState(initial?.note ?? "");
+    }));
+  });
+  const [note, setNote] = useState(restored?.note ?? initial?.note ?? "");
   const [itemOrder, setItemOrder] = useState<OptionalItemKey[]>(() =>
-    normalizeFormOrder(initialPreference?.formOrder)
+    normalizeFormOrder(restored?.itemOrder ?? initialPreference?.formOrder)
   );
-  const [visibilityMap, setVisibilityMap] = useState<Record<OptionalItemKey, boolean>>(() =>
-    buildInitialVisibilityMap({ initial, initialPreference, isNewLog })
-  );
-  const [pinned, setPinned] = useState(true);
+  const [visibilityMap, setVisibilityMap] = useState<Record<OptionalItemKey, boolean>>(() => {
+    if (restored) {
+      return DEFAULT_OPTIONAL_ITEM_ORDER.reduce<Record<OptionalItemKey, boolean>>((acc, key) => {
+        acc[key] = Boolean(restored.visibilityMap[key]);
+        return acc;
+      }, {} as Record<OptionalItemKey, boolean>);
+    }
+    return buildInitialVisibilityMap({ initial, initialPreference, isNewLog });
+  });
+  const [pinned, setPinned] = useState(restored?.pinned ?? true);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [duplicateMessage, setDuplicateMessage] = useState<string | null>(null);
@@ -763,6 +823,61 @@ export default function HeadacheLogForm({
     if (!fieldKey || !logSuggestionEditBasePath) return undefined;
     return `${logSuggestionEditBasePath}/${fieldKey}`;
   };
+
+  /** 今の入力内容（19 項目すべて）をまとめて、一時保存用のデータを作る。エラー表示の状態は含めない。 */
+  const buildSnapshot = useCallback(
+    (): HeadacheLogFormSnapshot => ({
+      timingDate,
+      timingTime,
+      intensity,
+      durationEnabled,
+      durationMode,
+      durationDays,
+      durationHours,
+      durationMinutes,
+      endTiming,
+      locations: [...locations],
+      types: [...types],
+      triggers: [...triggers],
+      associatedSymptoms: [...associatedSymptoms],
+      actions: actions.map((action) => ({ ...action })),
+      medications: medications.map((medication) => ({ ...medication })),
+      note,
+      itemOrder: [...itemOrder],
+      visibilityMap: { ...visibilityMap },
+      pinned,
+    }),
+    [
+      actions,
+      associatedSymptoms,
+      durationDays,
+      durationEnabled,
+      durationHours,
+      durationMinutes,
+      durationMode,
+      endTiming,
+      intensity,
+      itemOrder,
+      locations,
+      medications,
+      note,
+      pinned,
+      timingDate,
+      timingTime,
+      triggers,
+      types,
+      visibilityMap,
+    ]
+  );
+
+  const handleSuggestionEditNavigate = useCallback(() => {
+    onSuggestionEditNavigate?.(buildSnapshot());
+  }, [buildSnapshot, onSuggestionEditNavigate]);
+
+  const handleBarHeightChange = useCallback(
+    (height: number) => registerBottomBar("headache-log-form-bar", height),
+    [registerBottomBar]
+  );
 
   const durationPreview = useMemo(() => {
     if (!durationEnabled || durationMode !== "end") return undefined;
@@ -1122,6 +1237,7 @@ export default function HeadacheLogForm({
             placeholder="こめかみ、頭全体 など"
             suggestions={getSuggestions("location")}
             editHref={getSuggestionEditHref("location")}
+            onEditNavigate={handleSuggestionEditNavigate}
             onSuggestionUsed={onSuggestionUsed}
             onDuplicateSuggestion={showDuplicateSuggestionMessage}
           />
@@ -1138,6 +1254,7 @@ export default function HeadacheLogForm({
             placeholder="ズキズキ、締め付け など"
             suggestions={getSuggestions("type")}
             editHref={getSuggestionEditHref("type")}
+            onEditNavigate={handleSuggestionEditNavigate}
             onSuggestionUsed={onSuggestionUsed}
             onDuplicateSuggestion={showDuplicateSuggestionMessage}
           />
@@ -1154,6 +1271,7 @@ export default function HeadacheLogForm({
             placeholder="寝不足、ストレス など"
             suggestions={getSuggestions("trigger")}
             editHref={getSuggestionEditHref("trigger")}
+            onEditNavigate={handleSuggestionEditNavigate}
             onSuggestionUsed={onSuggestionUsed}
             onDuplicateSuggestion={showDuplicateSuggestionMessage}
           />
@@ -1170,6 +1288,7 @@ export default function HeadacheLogForm({
             placeholder="吐き気、めまい など"
             suggestions={getSuggestions("associatedSymptoms")}
             editHref={getSuggestionEditHref("associatedSymptoms")}
+            onEditNavigate={handleSuggestionEditNavigate}
             onSuggestionUsed={onSuggestionUsed}
             onDuplicateSuggestion={showDuplicateSuggestionMessage}
           />
@@ -1182,6 +1301,7 @@ export default function HeadacheLogForm({
               onSelect={handleActionSuggestionSelect}
               onAddEmpty={() => addAction()}
               editHref={getSuggestionEditHref("action")}
+              onEditNavigate={handleSuggestionEditNavigate}
             />
             {actions.length === 0 ? (
               <p className="text-sm text-[color:var(--text-secondary)]">未入力です。</p>
@@ -1282,6 +1402,7 @@ export default function HeadacheLogForm({
               onSelect={handleMedicationSuggestionSelect}
               onAddEmpty={() => addMedication()}
               editHref={getSuggestionEditHref("medication")}
+              onEditNavigate={handleSuggestionEditNavigate}
             />
             {medications.length === 0 ? (
               <p className="text-sm text-[color:var(--text-secondary)]">未入力です。</p>
@@ -1521,6 +1642,7 @@ export default function HeadacheLogForm({
           hasDelete={Boolean(onDelete)}
           onDelete={onDelete}
           onPinnedChange={setPinned}
+          onHeightChange={handleBarHeightChange}
         />
       )}
     </form>

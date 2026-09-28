@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import { useSuggestionNavigation } from "@/components/SuggestionNavigationProvider";
 import { getCurrentUser } from "@/lib/firebase/auth.client";
 import {
   ClientHeadacheLogPreferenceRepository,
@@ -15,6 +16,7 @@ import { sanitizeStringList } from "@/lib/firestore/repositories/sanitize";
 import type { HeadacheLog } from "@/lib/firestore/types";
 import {
   buildSuggestionsByField,
+  createSuggestionRange,
   type MergedSuggestionItem,
   type SuggestionFieldKey,
 } from "@/lib/firestore/suggestion-types";
@@ -24,6 +26,7 @@ import HeadacheLogForm, {
   type HeadacheLogPreferenceInput,
 } from "../../HeadacheLogForm";
 import { toLocalDateTimeInput } from "../../datetime";
+import { formDraftStore, type HeadacheLogFormSnapshot } from "../../formDraftStore";
 import {
   deleteHeadacheFreeConflicts,
   findConflictingHeadacheFreeLogs,
@@ -41,13 +44,9 @@ const toPreferenceInput = (
   };
 };
 
-const createSuggestionRange = () => {
-  const end = new Date();
-  end.setHours(23, 59, 59, 999);
-  const start = new Date(end);
-  start.setDate(start.getDate() - 364);
-  start.setHours(0, 0, 0, 0);
-  return { startMs: start.getTime(), endMs: end.getTime() };
+type FormRestore = {
+  roundTripId: string;
+  snapshot: HeadacheLogFormSnapshot;
 };
 
 const createSessionId = () => {
@@ -57,8 +56,10 @@ const createSessionId = () => {
 export default function EditHeadacheLogPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const nav = useSuggestionNavigation();
   const logId = params?.id;
   const [sessionId] = useState(createSessionId);
+  const [editSessionId] = useState(createSessionId);
   const [log, setLog] = useState<HeadacheLog | null>(null);
   const [initialPreference, setInitialPreference] = useState<HeadacheLogPreferenceInput | null>(
     null
@@ -79,6 +80,50 @@ export default function EditHeadacheLogPage() {
     Partial<Record<SuggestionFieldKey, MergedSuggestionItem[]>>
   >({});
 
+  // 候補編集画面から戻ってきたとき、退避しておいた入力内容を取り出す。
+  // 取り出すのは、編集中の記録 ID と一致するデータだけ。
+  // ここでは読み取るだけで、退避データの削除は復元が確定した後（下の useEffect）で行う。
+  const recordKey = params?.id ?? "";
+  const claimRestore = useCallback((): FormRestore | null => {
+    const ticket = nav.claimReturnTicket(getCurrentUser()?.uid ?? null, recordKey);
+    if (!ticket) return null;
+    const snapshot = formDraftStore.peekReturnDraft(ticket)?.snapshot ?? null;
+    if (!snapshot) return null;
+    return { roundTripId: ticket.roundTripId, snapshot };
+  }, [nav, recordKey]);
+
+  const [restore, setRestore] = useState<FormRestore | null>(claimRestore);
+
+  // 画面遷移の許可が、このページの初回描画より後に届くことがある（ルーターが先に表示される場合など）。
+  // そのため初回に取り出せなくても諦めず、許可が届いたタイミングでもう一度取り出しを試みる。
+  // 取り出せるのは「この編集画面に戻る」と登録された分だけで、同じデータを二度使うことはない。
+  useEffect(() => {
+    if (restore) return;
+    const next = claimRestore();
+    if (next) setRestore(next);
+  }, [claimRestore, nav.leaveApprovedCount, restore]);
+
+  // 実際に復元できたときだけ、退避データを使用済みにする（何度呼ばれても結果は変わらない）。
+  useEffect(() => {
+    if (!restore) return;
+    formDraftStore.acknowledgeReturn(restore.roundTripId);
+  }, [restore]);
+
+  const handleSuggestionEditNavigate = useCallback(
+    (snapshot: HeadacheLogFormSnapshot) => {
+      const user = getCurrentUser();
+      if (!user || !logId) return;
+      nav.beginRoundTrip({
+        uid: user.uid,
+        recordKey: logId,
+        editSessionId,
+        returnUrl: `/home/log/${logId}/edit`,
+        snapshot,
+      });
+    },
+    [editSessionId, logId, nav]
+  );
+
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -98,7 +143,7 @@ export default function EditHeadacheLogPage() {
         }
 
         if (user) {
-          ClientHeadacheLogRepository.listLogsInRange(user.uid, startMs, endMs)
+          ClientHeadacheLogRepository.listLogsInRangeRaw(user.uid, startMs, endMs)
             .then((logs) => {
               if (!mounted) return;
               setSuggestions(buildSuggestionsByField(logs, preference?.data.suggestionSettings));
@@ -120,6 +165,33 @@ export default function EditHeadacheLogPage() {
       mounted = false;
     };
   }, [logId]);
+
+  // 候補編集画面で候補が保存されたら、設定と候補の集計元になる過去の記録を読み込み直し、
+  // 候補リストだけを最新にする（入力中の内容はそのまま残る）。
+  useEffect(() => {
+    if (nav.suggestionRevision === 0) return;
+    let mounted = true;
+    const user = getCurrentUser();
+    if (!user) return;
+
+    (async () => {
+      try {
+        const { startMs, endMs } = createSuggestionRange();
+        const [preference, logs] = await Promise.all([
+          ClientHeadacheLogPreferenceRepository.getByUserId(user.uid),
+          ClientHeadacheLogRepository.listLogsInRangeRaw(user.uid, startMs, endMs),
+        ]);
+        if (!mounted) return;
+        setSuggestions(buildSuggestionsByField(logs, preference?.data.suggestionSettings));
+      } catch (error) {
+        console.error("頭痛記録候補再取得エラー:", error);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [nav.suggestionRevision]);
 
   const initial: Partial<HeadacheLogFormData> | undefined = useMemo(() => {
     if (!log) return undefined;
@@ -250,6 +322,7 @@ export default function EditHeadacheLogPage() {
     }
 
     await saveLog(data, preference);
+    nav.invalidateRoundTrip(editSessionId);
     router.push("/records?notice=updated");
   };
 
@@ -267,6 +340,7 @@ export default function EditHeadacheLogPage() {
     try {
       await deleteHeadacheFreeConflicts(conflicts);
       await saveLog(pendingData, pendingPreference);
+      nav.invalidateRoundTrip(editSessionId);
       router.push("/records?notice=updated");
     } catch (error) {
       console.error("頭痛なし記録の削除または頭痛記録保存エラー:", error);
@@ -284,6 +358,7 @@ export default function EditHeadacheLogPage() {
     setDeleting(true);
     try {
       await ClientHeadacheLogRepository.deleteLog(logId);
+      nav.invalidateRoundTrip(editSessionId);
       router.push("/records?notice=deleted");
     } catch (error) {
       console.error("頭痛記録削除エラー:", error);
@@ -328,6 +403,8 @@ export default function EditHeadacheLogPage() {
           </p>
         )}
         <HeadacheLogForm
+          // 戻りの許可が後から届いた場合は、key を変えてフォームを作り直し、退避していた入力内容で初期化する。
+          key={restore?.roundTripId ?? "initial"}
           initial={initial}
           initialPreference={initialPreference ?? undefined}
           suggestions={suggestions}
@@ -337,6 +414,8 @@ export default function EditHeadacheLogPage() {
           onSubmit={handleSubmit}
           onDelete={() => setDeleteDialogOpen(true)}
           submitLabel="決定"
+          restoredSnapshot={restore?.snapshot ?? null}
+          onSuggestionEditNavigate={handleSuggestionEditNavigate}
         />
       </div>
       <ConfirmDialog

@@ -1,6 +1,8 @@
-import type { Timestamp } from "firebase/firestore";
-import type { Timestamp as AdminTimestamp } from "firebase-admin/firestore";
-import type { HeadacheLog } from "./types";
+import {
+  AUTO_DISPLAY_LIMIT,
+  AUTO_ORDER_OFFSET,
+  MANUAL_DISPLAY_LIMIT,
+} from "@/lib/headache-log-constraints";
 
 export const SUGGESTION_FIELD_KEYS = [
   "locations",
@@ -12,6 +14,9 @@ export const SUGGESTION_FIELD_KEYS = [
 ] as const;
 
 export type SuggestionFieldKey = (typeof SUGGESTION_FIELD_KEYS)[number];
+
+/** 自動候補の集計期間の日数（当日を含む直近1年） */
+export const SUGGESTION_RANGE_DAYS = 365;
 export type SuggestionSourceType = "mostFrequent" | "mostRecent";
 
 export type TextSuggestionValue = {
@@ -75,17 +80,67 @@ type FirestoreSuggestionValue =
       unit: string;
     };
 
-type TimestampLike = Timestamp | AdminTimestamp;
+/**
+ * 候補集計だけに使う、検査済みの記録データ。
+ * Firestore の生データを `readRawSuggestionLog` で検査してから作る。
+ * sanitize（trim・全角半角変換・重複除去）は通さず、生の文字列を保持する。
+ */
+export type SuggestionSourceLog = {
+  timingMs: number;
+  locations: string[];
+  types: string[];
+  triggers: string[];
+  associatedSymptoms: string[];
+  actions: { text: string }[];
+  medications: { name: string; dosage: number; unit: string }[];
+};
+
+/** 編集画面が保持する、手動候補1件分のモデル */
+export type EditableRawInput =
+  | { type: "text"; text: string }
+  | { type: "medication"; name: string; dosage: number | string; unit: string };
+
+export type EditableManualEntry =
+  | {
+      kind: "parsed";
+      id: string;
+      item: ManualSuggestionItem;
+      /** 正規化前の入力値。既存候補の制約違反診断に使う */
+      rawInput: EditableRawInput;
+      rawOrder: unknown;
+      originalRaw: unknown;
+      valueEdited: boolean;
+    }
+  | {
+      kind: "unparsed";
+      id: string;
+      originalRaw: unknown;
+      reason: string;
+    };
+
+export type SuggestionContainerStatus = "missing" | "valid" | "invalid";
+export type SuggestionFieldStatus = "missing" | "valid" | "invalid";
+
+export type SuggestionSettingForEdit = {
+  containerStatus: SuggestionContainerStatus;
+  originalContainer: unknown;
+  /** containerStatus が invalid のときは未判定 */
+  fieldStatus?: SuggestionFieldStatus;
+  originalField: unknown;
+  entries: EditableManualEntry[];
+  originalOverrides: { mostFrequent?: unknown; mostRecent?: unknown };
+};
 
 const FULLWIDTH_ASCII_START = 0xff01;
 const FULLWIDTH_ASCII_END = 0xff5e;
 const ASCII_OFFSET = 0xfee0;
-const MANUAL_DISPLAY_LIMIT = 7;
-const MANUAL_SAVE_LIMIT = 20;
-const AUTO_DISPLAY_LIMIT = 2;
 
 export const isSuggestionFieldKey = (value: string): value is SuggestionFieldKey => {
   return (SUGGESTION_FIELD_KEYS as readonly string[]).includes(value);
+};
+
+const isPlainRecord = (value: unknown): value is Record<string, unknown> => {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 };
 
 export const normalizeSuggestionText = (text: string): string => {
@@ -102,11 +157,7 @@ export const normalizeSuggestionText = (text: string): string => {
   return halfWidth.trim().replace(/\s+/g, " ");
 };
 
-const normalizeMedicationDosage = (dosage: number | string): number | null => {
-  const numeric = typeof dosage === "number" ? dosage : Number(dosage);
-  if (!Number.isFinite(numeric)) return null;
-  return Math.trunc(numeric);
-};
+const normalizeDosageForKey = (dosage: number): string => String(dosage);
 
 const formatMedicationDosage = (dosage: number) => {
   return String(dosage);
@@ -135,14 +186,9 @@ export const createMedicationSuggestionValue = ({
 }): MedicationSuggestionValue | null => {
   const normalizedName = normalizeSuggestionText(name);
   const normalizedUnit = normalizeSuggestionText(unit);
-  const normalizedDosage = normalizeMedicationDosage(dosage);
-  const numericDosage = typeof dosage === "number" ? dosage : Number(dosage);
-  if (
-    !normalizedName ||
-    !normalizedUnit ||
-    normalizedDosage === null ||
-    !Number.isFinite(numericDosage)
-  ) {
+  const numericDosage = typeof dosage === "number" ? dosage : Number(String(dosage).trim());
+  const isBlankString = typeof dosage === "string" && dosage.trim().length === 0;
+  if (!normalizedName || !normalizedUnit || isBlankString || !Number.isFinite(numericDosage)) {
     return null;
   }
 
@@ -153,7 +199,7 @@ export const createMedicationSuggestionValue = ({
     name: normalizedName,
     dosage: numericDosage,
     unit: normalizedUnit,
-    canonicalKey: `${normalizedName}_${normalizedDosage}_${lowercaseUnit}`,
+    canonicalKey: `${normalizedName}_${normalizeDosageForKey(numericDosage)}_${lowercaseUnit}`,
     displayText: `${normalizedName} ${formatMedicationDosage(numericDosage)}${normalizedUnit}`,
   };
 };
@@ -177,27 +223,48 @@ export const suggestionValueToFirestore = (
 };
 
 export const parseSuggestionValue = (raw: unknown): SuggestionValue | null => {
-  if (!raw || typeof raw !== "object") return null;
-  const data = raw as Record<string, unknown>;
+  if (!isPlainRecord(raw)) return null;
 
-  if (data.type === "medication") {
+  if (raw.type === "medication") {
     if (
-      typeof data.name !== "string" ||
-      (typeof data.dosage !== "number" && typeof data.dosage !== "string") ||
-      typeof data.unit !== "string"
+      typeof raw.name !== "string" ||
+      (typeof raw.dosage !== "number" && typeof raw.dosage !== "string") ||
+      typeof raw.unit !== "string"
     ) {
       return null;
     }
 
     return createMedicationSuggestionValue({
-      name: data.name,
-      dosage: data.dosage,
-      unit: data.unit,
+      name: raw.name,
+      dosage: raw.dosage,
+      unit: raw.unit,
     });
   }
 
-  if (data.type === "text" && typeof data.text === "string") {
-    return createTextSuggestionValue(data.text);
+  if (raw.type === "text" && typeof raw.text === "string") {
+    return createTextSuggestionValue(raw.text);
+  }
+
+  return null;
+};
+
+/** 編集画面の診断に使う、正規化前の入力値。読み取れない形なら null。 */
+const readRawInput = (raw: unknown): EditableRawInput | null => {
+  if (!isPlainRecord(raw)) return null;
+
+  if (raw.type === "medication") {
+    if (
+      typeof raw.name !== "string" ||
+      (typeof raw.dosage !== "number" && typeof raw.dosage !== "string") ||
+      typeof raw.unit !== "string"
+    ) {
+      return null;
+    }
+    return { type: "medication", name: raw.name, dosage: raw.dosage, unit: raw.unit };
+  }
+
+  if (raw.type === "text" && typeof raw.text === "string") {
+    return { type: "text", text: raw.text };
   }
 
   return null;
@@ -208,54 +275,59 @@ const parseOrder = (raw: unknown, fallback: number) => {
 };
 
 const parseAutoOverride = (raw: unknown): AutoSuggestionOverride | undefined => {
-  if (!raw || typeof raw !== "object") return undefined;
-  const data = raw as Record<string, unknown>;
+  if (!isPlainRecord(raw)) return undefined;
   const override: AutoSuggestionOverride = {};
 
-  if (typeof data.isVisible === "boolean") {
-    override.isVisible = data.isVisible;
+  if (typeof raw.isVisible === "boolean") {
+    override.isVisible = raw.isVisible;
   }
-  if (typeof data.order === "number" && Number.isFinite(data.order)) {
-    override.order = data.order;
+  if (typeof raw.order === "number" && Number.isFinite(raw.order)) {
+    override.order = raw.order;
   }
 
   return Object.keys(override).length > 0 ? override : undefined;
 };
 
+/**
+ * 表示用の寛容な読み取り。解析できない要素は落とす（件数の切り詰めはしない）。
+ * ここで得たフォールバック値を編集用の元データや保存値へ流用しない。
+ */
 export const normalizeSuggestionSetting = (raw: unknown): SuggestionSetting => {
-  if (!raw || typeof raw !== "object") {
+  if (!isPlainRecord(raw)) {
     return { manualItems: [] };
   }
 
-  const data = raw as Record<string, unknown>;
-  const manualItems = Array.isArray(data.manualItems)
-    ? data.manualItems
+  const manualItems = Array.isArray(raw.manualItems)
+    ? raw.manualItems
         .map((rawItem, index): ManualSuggestionItem | null => {
-          if (!rawItem || typeof rawItem !== "object") return null;
-          const item = rawItem as Record<string, unknown>;
-          const value = parseSuggestionValue(item.value);
-          if (!value) return null;
+          const value = parseSuggestionValue(
+            isPlainRecord(rawItem) ? rawItem.value : undefined
+          );
+          if (!value || !isPlainRecord(rawItem)) return null;
 
           return {
             value,
-            isVisible: typeof item.isVisible === "boolean" ? item.isVisible : true,
-            order: parseOrder(item.order, index + 1),
+            isVisible: typeof rawItem.isVisible === "boolean" ? rawItem.isVisible : true,
+            order: parseOrder(rawItem.order, index + 1),
           };
         })
         .filter((item): item is ManualSuggestionItem => Boolean(item))
-        .slice(0, MANUAL_SAVE_LIMIT)
     : [];
 
   return {
     manualItems,
-    mostFrequentOverride: parseAutoOverride(data.mostFrequentOverride),
-    mostRecentOverride: parseAutoOverride(data.mostRecentOverride),
+    mostFrequentOverride: parseAutoOverride(raw.mostFrequentOverride),
+    mostRecentOverride: parseAutoOverride(raw.mostRecentOverride),
   };
 };
 
+/**
+ * 表示用のシリアライザー。件数の切り詰めはしない。
+ * 元データの保持が必要な編集画面からの保存は `buildSuggestionSavePayload` を使う。
+ */
 export const suggestionSettingToFirestore = (setting: SuggestionSetting) => {
   return {
-    manualItems: setting.manualItems.slice(0, MANUAL_SAVE_LIMIT).map((item) => ({
+    manualItems: setting.manualItems.map((item) => ({
       value: suggestionValueToFirestore(item.value),
       isVisible: item.isVisible,
       order: item.order,
@@ -265,48 +337,261 @@ export const suggestionSettingToFirestore = (setting: SuggestionSetting) => {
   };
 };
 
+/**
+ * 表示用の候補設定取得。
+ * コンテナー自体が配列・文字列・null などの不正な形なら、候補設定だけを空へフォールバックする。
+ */
 export const getSuggestionSetting = (
-  settings: Record<string, unknown> | undefined,
+  settings: unknown,
   fieldKey: SuggestionFieldKey
 ): SuggestionSetting => {
-  return normalizeSuggestionSetting(settings?.[fieldKey]);
-};
-
-const getTimestampMs = (value: TimestampLike): number => {
-  if (typeof value.toMillis === "function") {
-    return value.toMillis();
+  if (!isPlainRecord(settings)) {
+    return { manualItems: [] };
   }
-  return 0;
+  return normalizeSuggestionSetting(settings[fieldKey]);
 };
 
-const getValuesFromLog = (log: HeadacheLog, fieldKey: SuggestionFieldKey): SuggestionValue[] => {
+/**
+ * 編集用の読み取り。元データを保持したまま、コンテナー・対象項目・各要素の形を診断する。
+ * 不正な形を空マップとして再構築しない。
+ */
+export const readSuggestionSettingForEdit = (
+  rawSettings: unknown,
+  fieldKey: SuggestionFieldKey
+): SuggestionSettingForEdit => {
+  if (rawSettings === undefined) {
+    return {
+      containerStatus: "missing",
+      originalContainer: undefined,
+      fieldStatus: "missing",
+      originalField: undefined,
+      entries: [],
+      originalOverrides: {},
+    };
+  }
+
+  if (!isPlainRecord(rawSettings)) {
+    return {
+      containerStatus: "invalid",
+      originalContainer: rawSettings,
+      originalField: undefined,
+      entries: [],
+      originalOverrides: {},
+    };
+  }
+
+  const rawField = rawSettings[fieldKey];
+
+  if (rawField === undefined) {
+    return {
+      containerStatus: "valid",
+      originalContainer: rawSettings,
+      fieldStatus: "missing",
+      originalField: undefined,
+      entries: [],
+      originalOverrides: {},
+    };
+  }
+
+  if (!isPlainRecord(rawField) || !Array.isArray(rawField.manualItems)) {
+    return {
+      containerStatus: "valid",
+      originalContainer: rawSettings,
+      fieldStatus: "invalid",
+      originalField: rawField,
+      entries: [],
+      originalOverrides: {},
+    };
+  }
+
+  const entries = rawField.manualItems.map((rawItem, index): EditableManualEntry => {
+    const id = `manual-${index}`;
+
+    if (!isPlainRecord(rawItem)) {
+      return { kind: "unparsed", id, originalRaw: rawItem, reason: "候補の形式が不正です" };
+    }
+    if (rawItem.value === undefined) {
+      return { kind: "unparsed", id, originalRaw: rawItem, reason: "候補の値がありません" };
+    }
+    if (rawItem.order !== undefined && typeof rawItem.order !== "number") {
+      return { kind: "unparsed", id, originalRaw: rawItem, reason: "順番の形式が不正です" };
+    }
+
+    const rawInput = readRawInput(rawItem.value);
+    if (!rawInput) {
+      return { kind: "unparsed", id, originalRaw: rawItem, reason: "候補の種類を判別できません" };
+    }
+
+    const value = parseSuggestionValue(rawItem.value);
+    if (!value) {
+      return { kind: "unparsed", id, originalRaw: rawItem, reason: "候補の値を読み取れません" };
+    }
+
+    return {
+      kind: "parsed",
+      id,
+      item: {
+        value,
+        isVisible: typeof rawItem.isVisible === "boolean" ? rawItem.isVisible : true,
+        order: parseOrder(rawItem.order, index + 1),
+      },
+      rawInput,
+      rawOrder: rawItem.order,
+      originalRaw: rawItem,
+      valueEdited: false,
+    };
+  });
+
+  return {
+    containerStatus: "valid",
+    originalContainer: rawSettings,
+    fieldStatus: "valid",
+    originalField: rawField,
+    entries,
+    originalOverrides: {
+      mostFrequent: rawField.mostFrequentOverride,
+      mostRecent: rawField.mostRecentOverride,
+    },
+  };
+};
+
+const readTimingMs = (raw: unknown): number | null => {
+  if (typeof raw === "number") {
+    return Number.isFinite(raw) ? raw : null;
+  }
+  if (raw instanceof Date) {
+    const ms = raw.getTime();
+    return Number.isFinite(ms) ? ms : null;
+  }
+  if (!isPlainRecord(raw)) return null;
+
+  if (typeof raw.toMillis === "function") {
+    try {
+      const ms = (raw.toMillis as () => unknown)();
+      return typeof ms === "number" && Number.isFinite(ms) ? ms : null;
+    } catch {
+      return null;
+    }
+  }
+
+  if (typeof raw.seconds === "number" && Number.isFinite(raw.seconds)) {
+    const nanos = typeof raw.nanoseconds === "number" && Number.isFinite(raw.nanoseconds)
+      ? raw.nanoseconds
+      : 0;
+    return raw.seconds * 1000 + Math.floor(nanos / 1e6);
+  }
+
+  return null;
+};
+
+const readStringArray = (raw: unknown): string[] => {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((value): value is string => typeof value === "string");
+};
+
+/**
+ * Firestore の生ドキュメントから、候補集計に必要な値だけを検査して取り出す。
+ * 不正な要素は集計用の投影から除外するだけで、元記録は変更しない。
+ * 時刻を解釈できないログは集計対象外（null）とする。
+ */
+export const readRawSuggestionLog = (raw: unknown): SuggestionSourceLog | null => {
+  if (!isPlainRecord(raw)) return null;
+
+  const timingMs = readTimingMs(raw.timing);
+  if (timingMs === null) return null;
+
+  const actions = Array.isArray(raw.actions)
+    ? raw.actions
+        .filter((item): item is Record<string, unknown> => isPlainRecord(item))
+        .filter((item) => typeof item.text === "string")
+        .map((item) => ({ text: item.text as string }))
+    : [];
+
+  const medications = Array.isArray(raw.medications)
+    ? raw.medications
+        .filter((item): item is Record<string, unknown> => isPlainRecord(item))
+        .filter(
+          (item) =>
+            typeof item.name === "string" &&
+            typeof item.unit === "string" &&
+            typeof item.dosage === "number" &&
+            Number.isFinite(item.dosage)
+        )
+        .map((item) => ({
+          name: item.name as string,
+          dosage: item.dosage as number,
+          unit: item.unit as string,
+        }))
+    : [];
+
+  return {
+    timingMs,
+    locations: readStringArray(raw.locations),
+    types: readStringArray(raw.types),
+    triggers: readStringArray(raw.triggers),
+    associatedSymptoms: readStringArray(raw.associatedSymptoms),
+    actions,
+    medications,
+  };
+};
+
+/**
+ * 集計に使う生値のキーと、選定後に使う正規化済みの候補値の組。
+ * キーは表記ゆれを統合せず、記録された生の文字列（服薬は name/dosage/unit の JSON）とする。
+ */
+type RawAggregationEntry = { rawKey: string; value: SuggestionValue };
+
+const getRawEntriesFromLog = (
+  log: SuggestionSourceLog,
+  fieldKey: SuggestionFieldKey
+): RawAggregationEntry[] => {
+  const fromTexts = (values: string[]): RawAggregationEntry[] => {
+    const result: RawAggregationEntry[] = [];
+    for (const text of values) {
+      const value = createTextSuggestionValue(text);
+      if (value) result.push({ rawKey: text, value });
+    }
+    return result;
+  };
+
   switch (fieldKey) {
     case "locations":
     case "types":
     case "triggers":
     case "associatedSymptoms":
-      return (log[fieldKey] ?? [])
-        .map((value) => createTextSuggestionValue(value))
-        .filter((value): value is TextSuggestionValue => Boolean(value));
+      return fromTexts(log[fieldKey]);
     case "actions":
-      return (log.actions ?? [])
-        .map((action) => createTextSuggestionValue(action.text))
-        .filter((value): value is TextSuggestionValue => Boolean(value));
-    case "medications":
-      return (log.medications ?? [])
-        .map((medication) =>
-          createMedicationSuggestionValue({
+      return fromTexts(log.actions.map((action) => action.text));
+    case "medications": {
+      const result: RawAggregationEntry[] = [];
+      for (const medication of log.medications) {
+        const value = createMedicationSuggestionValue({
+          name: medication.name,
+          dosage: medication.dosage,
+          unit: medication.unit,
+        });
+        if (!value) continue;
+        result.push({
+          rawKey: JSON.stringify({
             name: medication.name,
             dosage: medication.dosage,
             unit: medication.unit,
-          })
-        )
-        .filter((value): value is MedicationSuggestionValue => Boolean(value));
+          }),
+          value,
+        });
+      }
+      return result;
+    }
   }
 };
 
+/**
+ * 最頻値と直近値を、記録された生値のまま集計する。
+ * 同一記録内の重複も出現回数として数える。
+ * 同数時は「新しい記録 → 日本語照合順」、直近は timing 降順・ログ内順の初出。
+ */
 export const computeFieldValues = (
-  logs: HeadacheLog[],
+  logs: SuggestionSourceLog[],
   fieldKey: SuggestionFieldKey
 ): { topValues: SuggestionValue[]; recentValues: SuggestionValue[] } => {
   const counts = new Map<
@@ -319,38 +604,36 @@ export const computeFieldValues = (
   >();
   const recentValues: SuggestionValue[] = [];
   const recentKeys = new Set<string>();
-  const sortedLogs = [...logs].sort((a, b) => getTimestampMs(b.timing) - getTimestampMs(a.timing));
+  const sortedLogs = [...logs].sort((a, b) => b.timingMs - a.timingMs);
 
   sortedLogs.forEach((log, logIndex) => {
-    const values = getValuesFromLog(log, fieldKey);
-
-    for (const value of values) {
-      const existing = counts.get(value.canonicalKey);
+    for (const entry of getRawEntriesFromLog(log, fieldKey)) {
+      const existing = counts.get(entry.rawKey);
       if (existing) {
         existing.count += 1;
       } else {
-        counts.set(value.canonicalKey, {
-          value,
+        counts.set(entry.rawKey, {
+          value: entry.value,
           count: 1,
           firstIndex: logIndex,
         });
       }
 
-      if (!recentKeys.has(value.canonicalKey)) {
-        recentKeys.add(value.canonicalKey);
-        recentValues.push(value);
+      if (!recentKeys.has(entry.rawKey)) {
+        recentKeys.add(entry.rawKey);
+        recentValues.push(entry.value);
       }
     }
   });
 
-  const topValues = Array.from(counts.values())
-    .sort((a, b) => {
+  const topValues = Array.from(counts.entries())
+    .sort(([keyA, a], [keyB, b]) => {
       if (b.count !== a.count) return b.count - a.count;
       if (a.firstIndex !== b.firstIndex) return a.firstIndex - b.firstIndex;
-      return a.value.canonicalKey.localeCompare(b.value.canonicalKey, "ja");
+      return keyA.localeCompare(keyB, "ja");
     })
     .slice(0, 1)
-    .map((entry) => entry.value);
+    .map(([, entry]) => entry.value);
 
   return {
     topValues,
@@ -374,7 +657,7 @@ export const buildAutoSuggestions = ({
     result.push({
       value,
       sourceType: "mostFrequent",
-      generationIndex: result.length + 1,
+      generationIndex: result.length,
     });
   }
 
@@ -384,7 +667,7 @@ export const buildAutoSuggestions = ({
     result.push({
       value,
       sourceType: "mostRecent",
-      generationIndex: result.length + 1,
+      generationIndex: result.length,
     });
   }
 
@@ -400,6 +683,22 @@ const getAutoOverride = (
     : setting.mostRecentOverride;
 };
 
+/** 自動候補の既定 order。モバイルと同じく「全手動の最大 order + 100 + generationIndex」。 */
+export const getDefaultAutoOrder = (
+  manualItems: ManualSuggestionItem[],
+  generationIndex: number
+) => {
+  const maxManualOrder = manualItems.reduce((max, item) => Math.max(max, item.order), 0);
+  return maxManualOrder + AUTO_ORDER_OFFSET + generationIndex;
+};
+
+/**
+ * 記録フォームに表示する候補を組み立てる。
+ * 1. 非表示を含む全手動候補の canonicalKey で自動候補を除外
+ * 2. 手動は表示中を抽出 → order 昇順 → 最大7件
+ * 3. 自動は override 適用 → 表示中を抽出 → order 昇順 → 最大2件
+ * 4. 手動優先で連結
+ */
 export const buildFinalSuggestions = ({
   autoSuggestions,
   setting,
@@ -411,6 +710,8 @@ export const buildFinalSuggestions = ({
   maxManualCount?: number;
   maxAutoCount?: number;
 }): MergedSuggestionItem[] => {
+  const allManualKeys = new Set(setting.manualItems.map((item) => item.value.canonicalKey));
+
   const manual = setting.manualItems
     .filter((item) => item.isVisible)
     .sort((a, b) => {
@@ -425,9 +726,8 @@ export const buildFinalSuggestions = ({
       order: item.order,
     }));
 
-  const manualKeys = new Set(manual.map((item) => item.value.canonicalKey));
   const auto = autoSuggestions
-    .filter((item) => !manualKeys.has(item.value.canonicalKey))
+    .filter((item) => !allManualKeys.has(item.value.canonicalKey))
     .map((item): MergedSuggestionItem => {
       const override = getAutoOverride(setting, item.sourceType);
       return {
@@ -435,7 +735,7 @@ export const buildFinalSuggestions = ({
         isManual: false,
         autoSourceType: item.sourceType,
         isVisible: override?.isVisible ?? true,
-        order: override?.order ?? item.generationIndex,
+        order: override?.order ?? getDefaultAutoOrder(setting.manualItems, item.generationIndex),
       };
     })
     .filter((item) => item.isVisible)
@@ -449,8 +749,8 @@ export const buildFinalSuggestions = ({
 };
 
 export const buildSuggestionsByField = (
-  logs: HeadacheLog[],
-  settings?: Record<string, unknown>
+  logs: SuggestionSourceLog[],
+  settings?: unknown
 ): Partial<Record<SuggestionFieldKey, MergedSuggestionItem[]>> => {
   return SUGGESTION_FIELD_KEYS.reduce<Partial<Record<SuggestionFieldKey, MergedSuggestionItem[]>>>(
     (acc, fieldKey) => {
@@ -464,4 +764,18 @@ export const buildSuggestionsByField = (
     },
     {}
   );
+};
+
+/**
+ * 自動候補の集計期間（直近1年分）。
+ * 画面ごとに複製せず、この1箇所で 365 日境界を担保する。
+ * `now` を受け取れるようにして、境界の自動検証を可能にする。
+ */
+export const createSuggestionRange = (now: Date = new Date()) => {
+  const end = new Date(now);
+  end.setHours(23, 59, 59, 999);
+  const start = new Date(end);
+  start.setDate(start.getDate() - (SUGGESTION_RANGE_DAYS - 1));
+  start.setHours(0, 0, 0, 0);
+  return { startMs: start.getTime(), endMs: end.getTime() };
 };
