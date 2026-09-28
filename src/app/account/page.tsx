@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { adminAuth } from "@/lib/firebase/admin";
-import { SESSION_COOKIE_NAME } from "@/lib/constants";
+import { SESSION_COOKIE_NAME, WEB_WITHDRAWAL_ENABLED } from "@/lib/constants";
 import {
   SubscriptionRepository,
   UserRepository,
@@ -36,18 +36,20 @@ export default async function AccountPage() {
 
   const user = await UserRepository.getUser(uid);
   const email = user?.email || verifiedEmail;
-  const subscription = await SubscriptionRepository.getSubscription(uid);
-  const withdrawalBlocked =
-    isActiveSubscriber(subscription) && !isCancelScheduled(subscription);
-  const withdrawalWarnsRemainingPeriod =
-    (isActiveSubscriber(subscription) && isCancelScheduled(subscription)) ||
-    isTrialing(subscription);
+  const withdrawal = WEB_WITHDRAWAL_ENABLED
+    ? await getWithdrawalState(uid)
+    : null;
 
-  return (
-    <ProfileMenu
-      email={email}
-      withdrawalBlocked={withdrawalBlocked}
-      withdrawalWarnsRemainingPeriod={withdrawalWarnsRemainingPeriod}
-    />
-  );
+  return <ProfileMenu email={email} withdrawal={withdrawal} />;
+}
+
+async function getWithdrawalState(uid: string) {
+  const subscription = await SubscriptionRepository.getSubscription(uid);
+  return {
+    blocked:
+      isActiveSubscriber(subscription) && !isCancelScheduled(subscription),
+    warnsRemainingPeriod:
+      (isActiveSubscriber(subscription) && isCancelScheduled(subscription)) ||
+      isTrialing(subscription),
+  };
 }

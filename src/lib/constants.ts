@@ -17,6 +17,9 @@ export const APP_VERSION = packageJson.version;
  */
 export const SUPPORT_EMAIL = "support@ystudiox.com" as const;
 
+/** Web からの退会を有効にするか（暫定対応中は false） */
+export const WEB_WITHDRAWAL_ENABLED: boolean = false;
+
 /**
  * セッションCookieの有効期限（ミリ秒）
  */

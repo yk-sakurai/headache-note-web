@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import { useSuggestionNavigation } from "@/components/SuggestionNavigationProvider";
 import { getCurrentUser } from "@/lib/firebase/auth.client";
 import {
   ClientHeadacheLogPreferenceRepository,
@@ -14,6 +15,7 @@ import { sanitizeStringList } from "@/lib/firestore/repositories/sanitize";
 import type { HeadacheLog } from "@/lib/firestore/types";
 import {
   buildSuggestionsByField,
+  createSuggestionRange,
   type MergedSuggestionItem,
   type SuggestionFieldKey,
 } from "@/lib/firestore/suggestion-types";
@@ -21,6 +23,7 @@ import HeadacheLogForm, {
   type HeadacheLogFormData,
   type HeadacheLogPreferenceInput,
 } from "../HeadacheLogForm";
+import { formDraftStore, type HeadacheLogFormSnapshot } from "../formDraftStore";
 import {
   deleteHeadacheFreeConflicts,
   findConflictingHeadacheFreeLogs,
@@ -66,22 +69,23 @@ const toPreferenceInput = (
   };
 };
 
-const createSuggestionRange = () => {
-  const end = new Date();
-  end.setHours(23, 59, 59, 999);
-  const start = new Date(end);
-  start.setDate(start.getDate() - 364);
-  start.setHours(0, 0, 0, 0);
-  return { startMs: start.getTime(), endMs: end.getTime() };
-};
-
 const createSessionId = () => {
   return globalThis.crypto?.randomUUID?.() ?? `web-${Date.now()}-${Math.random()}`;
 };
 
+type FormRestore = {
+  roundTripId: string;
+  snapshot: HeadacheLogFormSnapshot;
+};
+
+const RECORD_KEY = "new";
+const RETURN_URL = "/home/log/new";
+
 export default function NewHeadacheLogPage() {
   const router = useRouter();
+  const nav = useSuggestionNavigation();
   const [sessionId] = useState(createSessionId);
+  const [editSessionId] = useState(createSessionId);
   const [pendingData, setPendingData] = useState<HeadacheLogFormData | null>(null);
   const [pendingPreference, setPendingPreference] = useState<HeadacheLogPreferenceInput | null>(
     null
@@ -97,6 +101,48 @@ export default function NewHeadacheLogPage() {
   const [suggestions, setSuggestions] = useState<
     Partial<Record<SuggestionFieldKey, MergedSuggestionItem[]>>
   >({});
+
+  // 候補編集画面から戻ってきたとき、退避しておいた入力内容を取り出す。
+  // ここでは読み取るだけで、退避データの削除は復元が確定した後（下の useEffect）で行う。
+  const claimRestore = useCallback((): FormRestore | null => {
+    const ticket = nav.claimReturnTicket(getCurrentUser()?.uid ?? null, RECORD_KEY);
+    if (!ticket) return null;
+    const snapshot = formDraftStore.peekReturnDraft(ticket)?.snapshot ?? null;
+    if (!snapshot) return null;
+    return { roundTripId: ticket.roundTripId, snapshot };
+  }, [nav]);
+
+  const [restore, setRestore] = useState<FormRestore | null>(claimRestore);
+
+  // 画面遷移の許可が、このページの初回描画より後に届くことがある（ルーターが先に表示される場合など）。
+  // そのため初回に取り出せなくても諦めず、許可が届いたタイミングでもう一度取り出しを試みる。
+  // 取り出せるのは「この登録画面に戻る」と登録された分だけで、同じデータを二度使うことはない。
+  useEffect(() => {
+    if (restore) return;
+    const next = claimRestore();
+    if (next) setRestore(next);
+  }, [claimRestore, nav.leaveApprovedCount, restore]);
+
+  // 実際に復元できたときだけ、退避データを使用済みにする（何度呼ばれても結果は変わらない）。
+  useEffect(() => {
+    if (!restore) return;
+    formDraftStore.acknowledgeReturn(restore.roundTripId);
+  }, [restore]);
+
+  const handleSuggestionEditNavigate = useCallback(
+    (snapshot: HeadacheLogFormSnapshot) => {
+      const user = getCurrentUser();
+      if (!user) return;
+      nav.beginRoundTrip({
+        uid: user.uid,
+        recordKey: RECORD_KEY,
+        editSessionId,
+        returnUrl: RETURN_URL,
+        snapshot,
+      });
+    },
+    [editSessionId, nav]
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -116,7 +162,7 @@ export default function NewHeadacheLogPage() {
         }
 
         const { startMs, endMs } = createSuggestionRange();
-        ClientHeadacheLogRepository.listLogsInRange(user.uid, startMs, endMs)
+        ClientHeadacheLogRepository.listLogsInRangeRaw(user.uid, startMs, endMs)
           .then((logs) => {
             if (!mounted) return;
             setSuggestions(buildSuggestionsByField(logs, preference?.data.suggestionSettings));
@@ -137,6 +183,33 @@ export default function NewHeadacheLogPage() {
       mounted = false;
     };
   }, []);
+
+  // 候補編集画面で候補が保存されたら、設定と候補の集計元になる過去の記録を読み込み直し、
+  // 候補リストだけを最新にする（入力中の内容はそのまま残る）。
+  useEffect(() => {
+    if (nav.suggestionRevision === 0) return;
+    let mounted = true;
+    const user = getCurrentUser();
+    if (!user) return;
+
+    (async () => {
+      try {
+        const { startMs, endMs } = createSuggestionRange();
+        const [preference, logs] = await Promise.all([
+          ClientHeadacheLogPreferenceRepository.getByUserId(user.uid),
+          ClientHeadacheLogRepository.listLogsInRangeRaw(user.uid, startMs, endMs),
+        ]);
+        if (!mounted) return;
+        setSuggestions(buildSuggestionsByField(logs, preference?.data.suggestionSettings));
+      } catch (error) {
+        console.error("頭痛記録候補再取得エラー:", error);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [nav.suggestionRevision]);
 
   const saveLog = async (data: HeadacheLogFormData, preference: HeadacheLogPreferenceInput) => {
     const user = getCurrentUser();
@@ -215,6 +288,7 @@ export default function NewHeadacheLogPage() {
     }
 
     await saveLog(data, preference);
+    nav.invalidateRoundTrip(editSessionId);
     router.push("/records?notice=created");
   };
 
@@ -226,6 +300,7 @@ export default function NewHeadacheLogPage() {
     try {
       await deleteHeadacheFreeConflicts(conflicts);
       await saveLog(pendingData, pendingPreference);
+      nav.invalidateRoundTrip(editSessionId);
       router.push("/records?notice=created");
     } catch (error) {
       console.error("頭痛なし記録の削除または頭痛記録保存エラー:", error);
@@ -260,6 +335,8 @@ export default function NewHeadacheLogPage() {
           </p>
         ) : (
           <HeadacheLogForm
+            // 戻りの許可が後から届いた場合は、key を変えてフォームを作り直し、退避していた入力内容で初期化する。
+            key={restore?.roundTripId ?? "initial"}
             initialPreference={initialPreference ?? undefined}
             suggestions={suggestions}
             onSuggestionUsed={handleSuggestionUsed}
@@ -267,6 +344,8 @@ export default function NewHeadacheLogPage() {
             isNewLog={true}
             onSubmit={handleSubmit}
             submitLabel="決定"
+            restoredSnapshot={restore?.snapshot ?? null}
+            onSuggestionEditNavigate={handleSuggestionEditNavigate}
           />
         )}
       </div>
