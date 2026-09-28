@@ -43,8 +43,8 @@ export default function WithdrawalRow({
         onClick={handleClick}
         className="grid min-h-28 w-full grid-cols-[3.75rem_minmax(0,1fr)_1.5rem] items-center gap-4 px-6 py-5 text-left calm-transition hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-500 sm:grid-cols-[4.25rem_minmax(0,1fr)_1.75rem] sm:px-8"
       >
-        <span className="flex h-12 w-12 items-center justify-center text-red-600">
-          <WithdrawalIcon />
+        <span className="flex h-12 w-12 items-center justify-center">
+          <WithdrawalIcon className="text-red-600" />
         </span>
         <span className="min-w-0">
           <span className="block text-xl font-semibold leading-8">
@@ -104,12 +104,31 @@ export default function WithdrawalRow({
   );
 }
 
-function WithdrawalIcon() {
+/** Web からの退会が無効な間に表示する、押せない案内の行 */
+export function WithdrawalUnavailableRow() {
+  return (
+    <div className="grid min-h-28 w-full grid-cols-[3.75rem_minmax(0,1fr)] items-center gap-4 px-6 py-5 text-left sm:grid-cols-[4.25rem_minmax(0,1fr)] sm:px-8">
+      <span className="flex h-12 w-12 items-center justify-center">
+        <WithdrawalIcon className="text-[color:var(--brand-primary)]" />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-xl font-semibold leading-8">
+          退会手続き
+        </span>
+        <span className="mt-1 block text-lg leading-7 text-[color:var(--text-secondary)]">
+          退会はモバイルアプリから行ってください
+        </span>
+      </span>
+    </div>
+  );
+}
+
+function WithdrawalIcon({ className }: { className: string }) {
   return (
     <svg
       aria-hidden="true"
       viewBox="0 0 24 24"
-      className="h-10 w-10"
+      className={`h-10 w-10 ${className}`}
       fill="none"
       stroke="currentColor"
       strokeLinecap="round"

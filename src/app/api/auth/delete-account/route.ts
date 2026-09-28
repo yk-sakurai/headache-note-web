@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { adminAuth } from "@/lib/firebase/admin";
-import { SESSION_COOKIE_NAME } from "@/lib/constants";
+import { SESSION_COOKIE_NAME, WEB_WITHDRAWAL_ENABLED } from "@/lib/constants";
 import { deleteUserAccountData } from "@/lib/firestore/delete-user";
 import { SubscriptionRepository } from "@/lib/firestore/repositories/server";
 import { isActiveSubscriber, isCancelScheduled } from "@/lib/firestore/helpers";
@@ -9,6 +9,8 @@ import { isActiveSubscriber, isCancelScheduled } from "@/lib/firestore/helpers";
 const RECENT_LOGIN_MAX_AGE_SECONDS = 5 * 60;
 const PAID_PLAN_BLOCK_MESSAGE =
   "有料プランをご利用中です。先にプランの解約を行ってください。";
+const WEB_WITHDRAWAL_DISABLED_MESSAGE =
+  "退会はモバイルアプリから行ってください。";
 const DELETE_FAILED_MESSAGE =
   "退会処理に失敗しました。時間をおいてもう一度お試しください。";
 const INVALID_JSON_MESSAGE = "リクエストの形式が正しくありません。";
@@ -28,6 +30,13 @@ function isReauthRequiredAuthError(error: unknown): boolean {
 }
 
 export async function POST(request: NextRequest) {
+  if (!WEB_WITHDRAWAL_ENABLED) {
+    return NextResponse.json(
+      { error: WEB_WITHDRAWAL_DISABLED_MESSAGE },
+      { status: 403 }
+    );
+  }
+
   try {
     let body: unknown;
     try {

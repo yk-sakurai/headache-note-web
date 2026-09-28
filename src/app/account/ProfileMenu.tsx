@@ -1,16 +1,15 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { APP_VERSION } from "@/lib/constants";
-import WithdrawalRow from "./WithdrawalRow";
+import WithdrawalRow, { WithdrawalUnavailableRow } from "./WithdrawalRow";
 
 export default function ProfileMenu({
   email,
-  withdrawalBlocked,
-  withdrawalWarnsRemainingPeriod,
+  withdrawal,
 }: {
   email: string;
-  withdrawalBlocked: boolean;
-  withdrawalWarnsRemainingPeriod: boolean;
+  /** null は Web からの退会が無効であることを表す */
+  withdrawal: { blocked: boolean; warnsRemainingPeriod: boolean } | null;
 }) {
   return (
     <main className="min-h-screen bg-[color:var(--brand-mint-bg)]">
@@ -42,15 +41,29 @@ export default function ProfileMenu({
         </section>
 
         <section className="mt-12 space-y-5">
-          <h2 className="text-2xl font-semibold tracking-normal text-red-700 sm:text-3xl">
+          <h2
+            className={`text-2xl font-semibold tracking-normal sm:text-3xl ${
+              withdrawal
+                ? "text-red-700"
+                : "text-[color:var(--brand-primary)]"
+            }`}
+          >
             退会
           </h2>
 
-          <div className="overflow-hidden rounded-lg border border-red-100 bg-[color:var(--surface)]">
-            <WithdrawalRow
-              blocked={withdrawalBlocked}
-              warnsRemainingPeriod={withdrawalWarnsRemainingPeriod}
-            />
+          <div
+            className={`overflow-hidden rounded-lg border bg-[color:var(--surface)] ${
+              withdrawal ? "border-red-100" : "border-[color:var(--border)]"
+            }`}
+          >
+            {withdrawal ? (
+              <WithdrawalRow
+                blocked={withdrawal.blocked}
+                warnsRemainingPeriod={withdrawal.warnsRemainingPeriod}
+              />
+            ) : (
+              <WithdrawalUnavailableRow />
+            )}
           </div>
         </section>
 
