@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SESSION_COOKIE_NAME } from "@/lib/constants";
+import { SESSION_COOKIE_NAME, WEB_BILLING_ENABLED } from "@/lib/constants";
 
 function isProtectedPath(pathname: string): boolean {
   if (pathname === "/home" || pathname.startsWith("/home/")) return true;
@@ -18,7 +18,8 @@ export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // Pricingページ: 一回だけのpricing_view記録用CookieセットとログAPI呼び出し
-  if (pathname === "/pricing") {
+  // （Web 課金が無効な間はページ側でリダイレクトするため記録しない）
+  if (pathname === "/pricing" && WEB_BILLING_ENABLED) {
     const pvCookieName = "pv_pricing";
     const hasPv = req.cookies.get(pvCookieName)?.value;
     const res = NextResponse.next();

@@ -56,12 +56,24 @@ function getAdminApp(): App {
     return _adminApp;
   }
 
+  // App Hosting（Cloud Run）上では FIREBASE_CONFIG / K_SERVICE が自動で設定される。
+  // その場合は実行サービスアカウントの認証情報（ADC）を使い、秘密鍵を持たない。
+  if (
+    process.env.FIREBASE_CONFIG ||
+    process.env.K_SERVICE ||
+    process.env.GOOGLE_APPLICATION_CREDENTIALS
+  ) {
+    _adminApp = initializeApp();
+    return _adminApp;
+  }
+
   throw new Error(
     "Firebase Admin SDK が初期化できません。環境変数を確認してください。\n" +
       "以下のいずれかを設定してください：\n" +
       "1. FIRESTORE_EMULATOR_HOST (Emulator使用時)\n" +
       "2. FIREBASE_SERVICE_ACCOUNT_KEY (JSON形式)\n" +
-      "3. FIREBASE_ADMIN_PROJECT_ID, FIREBASE_ADMIN_CLIENT_EMAIL, FIREBASE_ADMIN_PRIVATE_KEY"
+      "3. FIREBASE_ADMIN_PROJECT_ID, FIREBASE_ADMIN_CLIENT_EMAIL, FIREBASE_ADMIN_PRIVATE_KEY\n" +
+      "4. GOOGLE_APPLICATION_CREDENTIALS (ADC。App Hosting 上では自動)"
   );
 }
 
