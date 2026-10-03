@@ -1,7 +1,9 @@
+import { redirect } from 'next/navigation';
 import PricingClient from './PricingClient';
 import {
   LAUNCH_DATE_STR,
   LAUNCH_PROMO_DAYS,
+  WEB_BILLING_ENABLED,
   YEARLY_LAUNCH_PROMO_PRICE_YEN,
   YEARLY_PRICE_YEN,
   YEARLY_TRIAL_DAYS,
@@ -26,6 +28,8 @@ export default async function PricingPage({
 }: {
   searchParams: Promise<{ checkout?: string }>;
 }) {
+  if (!WEB_BILLING_ENABLED) redirect('/');
+
   const params = await searchParams;
   const isPromo = isPromoActive(Date.now());
 
