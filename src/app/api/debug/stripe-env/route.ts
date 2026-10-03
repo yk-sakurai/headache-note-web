@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 
 export async function GET() {
+  // 開発時の確認用。本番ビルドでは公開しない
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Not Found' }, { status: 404 });
+  }
+
   // 値は返さず、存在有無のみ返す（セキュア）
   const status = {
     STRIPE_SECRET_KEY: Boolean(process.env.STRIPE_SECRET_KEY),

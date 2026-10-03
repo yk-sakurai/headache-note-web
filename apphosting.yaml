@@ -8,7 +8,10 @@ runConfig:
 
 # Environment variables and secrets.
 env:
-  # --- Firebase Web SDK (dev プロジェクトの値) ---
+  # --- Firebase Web SDK ---
+  # 値は Secret Manager に保存する。シークレットはプロジェクトごとに分かれるため、
+  # dev / prod で同じ名前のシークレットにそれぞれの値を登録すれば、このファイルは共通で使える。
+  # Admin SDK は App Hosting の実行サービスアカウント（ADC）で認証するため、ここには定義しない。
   - variable: NEXT_PUBLIC_FIREBASE_API_KEY
     secret: NEXT_PUBLIC_FIREBASE_API_KEY
     availability: [BUILD, RUNTIME]
@@ -26,4 +29,7 @@ env:
     availability: [BUILD, RUNTIME]
   - variable: NEXT_PUBLIC_FIREBASE_APP_ID
     secret: NEXT_PUBLIC_FIREBASE_APP_ID
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
+    secret: NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
     availability: [BUILD, RUNTIME]

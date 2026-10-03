@@ -20,6 +20,9 @@ export const SUPPORT_EMAIL = "support@ystudiox.com" as const;
 /** Web からの退会を有効にするか（暫定対応中は false） */
 export const WEB_WITHDRAWAL_ENABLED: boolean = false;
 
+/** Web での課金（Stripe Checkout / Customer Portal）を有効にするか（Stripe 未導入の間は false） */
+export const WEB_BILLING_ENABLED: boolean = false;
+
 /**
  * セッションCookieの有効期限（ミリ秒）
  */

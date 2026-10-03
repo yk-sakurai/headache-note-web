@@ -8,9 +8,14 @@ import {
   STRIPE_YEARLY_LAUNCH_PROMO_PRICE_ID,
   LAUNCH_DATE_STR,
   LAUNCH_PROMO_DAYS,
+  WEB_BILLING_ENABLED,
 } from '@/lib/constants';
 import { getAuth } from 'firebase-admin/auth';
 import { adminApp, adminDb } from '@/lib/firebase/admin';
+
+// Stripe 未導入の間は Web からの課金操作を受け付けない
+const WEB_BILLING_DISABLED_MESSAGE =
+  '有料プランのお申し込み・管理はモバイルアプリから行ってください。';
 
 // プロモーション期間判定（サーバー側）
 function isPromoActive(): boolean {
@@ -23,6 +28,13 @@ function isPromoActive(): boolean {
 }
 
 export async function POST(req: NextRequest) {
+  if (!WEB_BILLING_ENABLED) {
+    return NextResponse.json(
+      { error: WEB_BILLING_DISABLED_MESSAGE },
+      { status: 403 }
+    );
+  }
+
   try {
     // 1. セッションCookieからユーザー認証
     const cookieStore = await cookies();
